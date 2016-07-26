@@ -1,0 +1,34 @@
+citHeader("To cite spaMM in publications check for updates of the following manuscript:")
+
+
+citEntry(entry="Article",
+         
+         title = "The summary likelihood method and its implementation in the Infusion package",
+         
+         author = personList(as.person("François Rousset"),
+                             
+                             as.person("Alexandre Gouy"),
+                             
+                             as.person("Camille Martinez Almoyna"),
+                             
+                             as.person("Alexandre Courtiol")),
+         
+         journal      = "?",
+         
+         year         = "submitted",
+         
+         volume       = "?",
+
+         pages        = "?-?",
+         
+         #url          = "",
+         
+         
+         textVersion = paste("Rousset F., Gouy A., Martinez Almoyna C., Courtiol A. (submitted)",
+                             
+                             "The summary likelihood method and its implementation in the Infusion package",
+                             
+                             "", # place for "journal vol pages" 
+                             
+                             "") # place for "URL ..." 
+)
