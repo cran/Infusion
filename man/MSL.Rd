@@ -7,7 +7,8 @@
 \description{
 This computes the maximum of an object of class \code{SLik} representing an inferred (summary) likelihood surface}
 \usage{
-MSL(object,CIs=TRUE,level=0.95, verbose=interactive(),...)
+MSL(object, CIs = TRUE, level = 0.95, verbose = interactive(),
+    eval_RMSEs = inherits(object,"SLik"), ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -22,6 +23,9 @@ an object of class \code{SLik} as produced by \code{\link{infer_surface.logLs}}
 }
   \item{verbose}{
   Whether to display some information about progress and results.
+}
+  \item{eval_RMSEs}{
+  Logical: whether to evaluate prediction uncertainty for likelihoods/ likelihood ratios/ parameters. By default TRUE for \code{SLik} objects, and best kept so, as it is necessary for the automated iterative method. May be FALSE for other classes of objects.  
 }
   \item{\dots}{Further arguments passed from or to other methods. 
   }

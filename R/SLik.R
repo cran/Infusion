@@ -2,12 +2,12 @@ predict.SLik <- function (object, newdata=object$logLs[,object$colTypes$fittedPa
   return(predict(object$fit,newdata=newdata,...))
 }
 
-refine.SLik <- function(object,...) {
-  refine.default(object,surfaceData=object$logLs,...)
+refine.SLik <- function(object,method=NULL,...) {
+  if (is.null(method)) method <- "REML"
+  refine.default(object,surfaceData=object$logLs,method=method,...)
 }
 
 print.SLik <-function(x,...) {summary.SLik(x,...)}
-print.SLik_j <-function(x,...) {summary.SLik_j(x,...)} 
 
 # options("digits") controls digits in print()
 ## 3 digits on RMSEs makes a lot of digits overall   
@@ -36,7 +36,7 @@ calc.lrthreshold.SLik <- function(object,dlr=NULL,verbose=interactive(),...) {
   probErr <- object$MSL$predVar *2.326348 # qnorm(0.99,0,1) ## $predVar differs in conception from the pred MSE used in migraine
   if (verbose) {
     cat("Default d(logL) Chi-square threshold and probable prediction error:\n")
-    locstring <- paste(prettysignif(-dlr)," and ",prettysignif(probErr),"\n",sep="")
+    locstring <- paste(.prettysignif(-dlr)," and ",.prettysignif(probErr),"\n",sep="")
     cat(locstring)
   }
   ## expand beyond *predicted* dlr threshold  ## this should be disconnected from GV$hullExpandFactor

@@ -34,9 +34,9 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
                              maxit=1,n=NULL,useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE),newsimuls=NULL,
                              useCI=TRUE,level=0.95,verbose=list(most=interactive(),movie=FALSE),
                              precision = Infusion.getOption("precision"),
-                             method, ## currently implemented: "GCV" and HLfit methods
+                             method, ## "GCV" and HLfit methods for Slik objects
                              ...) {
-  if (!is.list(verbose)) verbose <-as.list(verbose)
+  if (!is.list(verbose)) verbose <- as.list(verbose)
   if (is.null(names(verbose))) names(verbose) <- c("most","movie")[seq_len(length(verbose))]
   if (is.null(verbose$most)) verbose$most <- interactive()
   if (is.null(verbose$movie)) verbose$movie <- FALSE
@@ -51,11 +51,6 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
     # return(object) 
     ## nevertheless continue for one iteration 
   }
-  if (missing(method)) {
-    if (inherits(object,"SLikp")) {
-      method <- "PQL"
-    } else method <- "REML" ## default is no longer c(rep("GCV",maxit-1),"REML")
-  }
   EIsampleFactor <- 30
   while( it==0L ##always perform one iteration on request  
          || (it <maxit && (any(RMSEs>precision) || any(is.na(RMSEs)))) ) {
@@ -64,7 +59,9 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
     logLname <- object$colTypes$logLname
     if ( is.null(newsimuls)) {
       if (inherits(object,"SLik_j")) {
-        trypoints <- rparam_from_SLik_j(object)
+        locblob <- .rparam_from_SLik_j(object,fittedPars=fittedPars,level=level) 
+        trypoints <- locblob$trypoints
+        freq_good <- locblob$freq_good
       } else {
         if (verbose$most) cat("\nDesigning new parameter points (may be slow)...\n")
         ## replace pairs with low predicted lik by pairs with high predicted lik
@@ -104,6 +101,7 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       if (is.null(Simulate)) return(trypoints)
       if (inherits(object,"SLik_j")) {
         newsimuls <- add_reftable(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most)     
+        newsimuls$cumul_iter <- previous_cumul_iter + it +1L
       } else {
         newsimuls <- add_simulation(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most)    
       }
@@ -116,10 +114,11 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       }
       checkNA <- apply(newsimuls,1L,anyNA)
       newsimuls <- newsimuls[!checkNA,,drop=FALSE] ## FR->FR quick patch
-      jointEDF <- rbind(object$logLs,newsimuls)
+      jointEDF <- structure(rbind(object$logLs,newsimuls), allPars=object$colTypes$allPars)
       object <- infer_SLik_joint(data = jointEDF,
                             stat.obs = attr(object$logLs,"stat.obs"),
-                            Simulate = attr(object$logLs,"Simulate"))
+                            Simulate = attr(object$logLs,"Simulate"),
+                            verbose=verbose$most)
       object$latestPoints <- nrow(jointEDF)+1-seq_len(nrow(newsimuls)) ## for plots
     } else {
       if ( ! inherits(newsimuls,"list") ) {
@@ -183,16 +182,19 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
     }    
     # maximization, new CIs, new MSEs
     object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most)
+    if (inherits(object,"SLik_j")) {attr(object$logLs,"freq_good") <- freq_good} 
     MSEs <- object$RMSEs^2
     if (verbose$movie) plot(object,...)
     it <- it+1
     newsimuls <- NULL ## essential for the test
   } ## end while() loop
-  if (verbose$most) plot(object,...)
-  if  ( any(is.na(RMSEs))) {
-    cat("Target precision could not be ascertained.\n")
-  } else if  ( inherits(object,"SLik_j") ) {
-    cat("\nTarget precision not yet assessed for 'SLik_j' objects.\n")
-  } else if  ( any(RMSEs>precision) ) {cat("\nTarget precision does not appear to be reached.\n")}
+  if (verbose$most) {
+    plot(object,...)
+    if  ( any(is.na(RMSEs))) {
+      cat("Target precision could not be ascertained.\n")
+    } else if (is.null(object$RMSEs)) {
+      cat("Precision has not been evaluated.\n")
+    } else if  ( any(RMSEs>precision) ) {cat("\nTarget precision does not appear to be reached.\n")}
+  }
   return(object)
 }

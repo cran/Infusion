@@ -6,9 +6,12 @@ add_reftable <- function(...) { ## fn for ABC like simulation
 add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
                            nRealizations=NULL,
                            newsimuls=NULL,verbose=interactive()) {
+  old_nRealizations <- Infusion.getOption("nRealizations")
   if (is.null(nRealizations)) {
-    nRealizations <- Infusion.getOption("nRealizations")
-  } else Infusion.options(nRealizations=nRealizations)
+    nRealizations <- old_nRealizations
+  } else {
+    Infusion.options(nRealizations=nRealizations)
+  }
   if ( ! is.null(simulations)) {
     lowersList <- list(old=attr(simulations,"LOWER"))  
     uppersList <- list(old=attr(simulations,"UPPER"))  
@@ -66,6 +69,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
   attr(simulations,"UPPER") <- do.call(pmax,uppersList)
   attr(simulations,"Simulate") <- Simulate
   if ( nRealizations>1 && ! inherits(simulations,"EDFlist")) class(simulations) <- c("EDFlist",class(simulations))
+  Infusion.options(nRealizations=old_nRealizations)
   return(simulations)
 }  
 

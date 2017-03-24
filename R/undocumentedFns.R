@@ -109,7 +109,7 @@ smoothEDF_s <- function(data,pars=c(), verbose=FALSE,...) {
   fit <- do.call(corrHLfit,arglist)
   #if(verbose) cat("Smoothing the data, may be slow...\n")
   arglist$data <- data
-  ranfix <- c(fit$corrPars,lambda=fit$lambda)
+  ranfix <- c(fit$corrPars,list(lambda=fit$lambda))
   arglist$ranFix <- ranfix
   arglist$`init.corrHLfit` <- NULL
   fit <- do.call(corrHLfit,arglist)
@@ -122,7 +122,7 @@ smoothEDF_s <- function(data,pars=c(), verbose=FALSE,...) {
 
 
 ## the cases where there are replicates, one with and one without a logL estimate, are among the misleading ones dealt here:  
-remove.pairswithNas <- function(logLs) {
+.remove.pairswithNas <- function(logLs) {
   fittedPars <- attr(logLs,"colTypes")$fittedPars 
   logLname <- attr(logLs,"colTypes")$logLname
   ordered.logLs <- logLs[do.call(order,logLs),]
@@ -141,7 +141,7 @@ remove.pairswithNas <- function(logLs) {
   ordered.logLs[ ! misleading,,drop=FALSE]
 }
 
-prettysignif <- function(x,extradigits=0) {
+.prettysignif <- function(x,extradigits=0) {
   ## extradigits=0 => 99(99)99->99(99)99; 999.9->999.9; 9.999->9.999; 0.xxx -> 3 chifres signif
   if (is.na(x)) return(NA)
   #ELSE

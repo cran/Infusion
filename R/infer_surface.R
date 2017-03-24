@@ -71,7 +71,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
     minGood <- min(purgedlogLs[ ! suspectPts,logLname])
     quiteLow <- minGood - min(1e-4,(minGood-max(purgedlogLs[suspectPts,logLname]))/1000) 
     purgedlogLs[suspectPts,logLname] <- NA ## tags them for matching and removal
-    purgedlogLs <- remove.pairswithNas(purgedlogLs) ## *removes pairs* where any member is NA   
+    purgedlogLs <- .remove.pairswithNas(purgedlogLs) ## *removes pairs* where any member is NA   
     purgedlogLs <- purgedlogLs[ ! is.na(purgedlogLs[,logLname]),,drop=FALSE] ## removes *remaining NA's* not from pairs
   }  
   #
@@ -112,7 +112,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
                            HLmethod=method,
                            init.corrHLfit=init.corrHLfit,prior.weights=priorweights) ## clean as one can expect
       RMSE <- sqrt(thisfit$phi)
-      ranfix <- c(thisfit$corrPars,lambda=thisfit$lambda,phi=thisfit$phi)
+      ranfix <- c(thisfit$corrPars,list(lambda=thisfit$lambda,phi=thisfit$phi))
       ## it is worth fixing the fixed effects if all other params are fixed. Otherwise 
       ## extreme low response values in the 'object' affect the predictionCoeffs and create artificial "valleys" in the predictions
       ## (it might be better to refit lambda, except that we don't want extreme lambda...)  

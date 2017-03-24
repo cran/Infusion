@@ -26,7 +26,7 @@ The name (as a character string) of the function used to generate empirical dist
  A data frame which each line matches the single vector argument of \code{Simulate}
 }
   \item{nRealizations}{
-  The number of simulated samples of summary statistics, for each empirical distribution (each row of \code{par.grid}). If the argument is NULL, the value is obtained by \code{Infusion.getOption}. If the argument is not NULL, \code{Infusion.options(nRealizations)} is set.
+  The number of simulated samples of summary statistics, for each empirical distribution (each row of \code{par.grid}). If the argument is NULL, the value is obtained by \code{Infusion.getOption}. If the argument is not NULL, \code{Infusion.options(nRealizations)} is set, but restored, on exit from \code{add_simulation}, to its initial value.
 }
   \item{newsimuls}{
   If the function used to generate empirical distributions cannot be called by R, then \code{newsimuls} can be used to provide these distributions. This argument should be list of matrices, each with a \code{par} attribute (see Examples). Rows of each matrix stand for simulation replicates and rows for the different summary statistics. This is the same format as the return value of \code{add_simulation}, except that the latter adds further attributes.
@@ -39,7 +39,8 @@ The name (as a character string) of the function used to generate empirical dist
  }
 }
 \value{
-An objet of class \code{EDFlist}, which is a list of matrices-with-attribute. Each matrix contains a simulated distribution of summary statistics for given parameters, and the \code{"par"} attribute is a vector of parameters. If \code{Simulate} is used, this must give the full parameters required for a call of the simulation function; otherwise it must at least include all variable parameters in this \bold{or later} simulations to be appended to the simulation list. 
+If only one realization is computed for each (vector-valued) parameter, a data.frame is returned. 
+Otherwise, the return value is an objet of class \code{EDFlist}, which is a list of matrices-with-attribute. Each matrix contains a simulated distribution of summary statistics for given parameters, and the \code{"par"} attribute is a vector of parameters. If \code{Simulate} is used, this must give the full parameters required for a call of the simulation function; otherwise it must at least include all variable parameters in this \bold{or later} simulations to be appended to the simulation list. 
 }
 \examples{
 # example of building a list of simulations from scratch:

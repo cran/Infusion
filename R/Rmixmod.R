@@ -21,7 +21,7 @@ densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster"
       ## keep only simuls that match all the boundaries that stat.obs matches:
       goodrows <- which(apply(simulsMatches[,activeNames,drop=FALSE],1L,all))
       if (length(goodrows)==0L) {
-        resu <- structure(resu=new("MixmodCluster",nbCluster=0L),
+        resu <- structure(resu=new("mixmodCluster",nbCluster=0L),
                           statNames=statNames,
                           Sobs_activeBoundaries=Sobs_activeBoundaries,
                           freq=1/(2*(nrow(data+1))))
@@ -77,7 +77,7 @@ densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster"
         if ( ! x@error ) break
       }
     } 
-  } else { resu <- get_best_clu_by_AIC(x) }
+  } else { resu <- .get_best_clu_by_AIC(x) }
   if (resu@model=="Gaussian_pk_Lk_C") { 
     ## then cov matrices are proportional, wecheck they are not too heterogeneous
     varmats <- resu@parameters@variance
@@ -102,6 +102,16 @@ densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster"
   class(resu) <- "dMixmod"
   return(resu)
 }
+
+.get_best_clu_by_AIC <- function(cluObject) {
+  BICs <- unlist(lapply(cluObject@results,slot,name="criterionValue"))
+  logLs <- unlist(lapply(cluObject@results,slot,name="likelihood"))
+  dfs <- (2*logLs+BICs)/(log(cluObject@nbSample))
+  AICs <- -2*logLs+2*dfs
+  return(cluObject@results[[which.min(AICs)]])
+}
+
+
 
 
 predict.dMixmod <- function(object,
@@ -173,4 +183,37 @@ predict.dMixmod <- function(object,
     } else mixture <- freqs
   }
   return(mixture)
+}
+
+.simulate.MixmodResults <- function (object, nsim=1, seed=NULL, 
+                                     size=1, # number of points for each simulation 
+                                     ...) {
+  ## RNG stuff copied from simulate.lm
+  if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+    runif(1)
+  if (is.null(seed))
+    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+  else { ## this makes changes to RNG local where 'seed' is used:
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    set.seed(seed)
+    RNGstate <- structure(seed, kind = as.list(RNGkind()))
+    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+  }
+  #
+  prob <- object@parameters["proportions"]
+  locrmvnorm <- function(v,rclutable) {
+    numv <- as.numeric(v)
+    rmvnorm(rclutable[v], 
+            mean=object@parameters["mean", numv], 
+            sigma= object@parameters["variance",numv])
+  }
+  onesimfn <- function() {
+    rclu <- sample(seq( object@nbCluster),size,replace=TRUE, prob=prob) ## vector of sampled clusters
+    rclutable <- table(rclu)
+    onesim <- do.call(rbind,lapply(names(rclutable), locrmvnorm,rclutable=rclutable))
+    return(onesim)
+  }
+  simuls <- replicate(nsim,onesimfn(),simplify = FALSE)
+  if (nsim==1L) simuls <- simuls[[1L]]
+  return(simuls)
 }

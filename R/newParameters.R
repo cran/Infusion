@@ -109,15 +109,8 @@
   return(trypoints) ## fittedPars parameters
 }
 
-# return value includes fixedPars
-rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), useCI = TRUE, 
-                   verbose = interactive(), tryn=30*n,  
-                   level = 0.95, 
-                   #auxlevel=1-((1-level)*2/3),
-                   CIweight=Infusion.getOption("CIweight")) {
-  RMSEs <- object$RMSEs
+.make_n <- function(RMSEs, fittedPars, n, CIweight) {
   if (is.null(RMSEs)) RMSEs <- 1e10
-  fittedPars <- object$colTypes$fittedPars  
   np <- length(fittedPars)
   if(is.null(n)) n <- ( 2+1*(np>1) ) * (2*np+1) # 1st factor => 1 ou 3 profile points for each bound; 2nd => cf max length of MSEs
   CIweight <- CIweight*(n+1)/(n-2)
@@ -136,7 +129,18 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
     nvec[numnames] <- nvec[numnames] + messy
   }
   names(nvec) <- names(wMSEs)
-#print(nvec)  
+  return(nvec)
+}
+
+# return value includes fixedPars
+rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), useCI = TRUE, 
+                   verbose = interactive(), tryn=30*n,  
+                   level = 0.95, 
+                   #auxlevel=1-((1-level)*2/3),
+                   CIweight=Infusion.getOption("CIweight")) {
+  fittedPars <- object$colTypes$fittedPars  
+  nvec <-  .make_n(RMSEs=object$RMSEs, fittedPars=fittedPars, n=n, CIweight=CIweight)
+  np <- length(fittedPars)
   #
   pts <- object$fit$data[,object$colTypes$fittedPars,drop=FALSE]
   vT <- volTriangulation(pts)
@@ -144,10 +148,6 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
   gridinfo <- lapply(object$colTypes$fittedPars,function(par) fallback[par,])
   names(gridinfo) <- object$colTypes$fittedPars
   largerpts <- do.call(expand.grid,gridinfo)
-if (TRUE) {
-  zut <- rbind(pts,largerpts)
-  save(zut,file="zut.rda")
-}
   largervT <- volTriangulation(rbind(pts,largerpts))
   #
   if (useCI) {

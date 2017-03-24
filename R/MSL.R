@@ -1,4 +1,4 @@
-RMSEwrapper <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, verbose=interactive()) {
+.RMSEwrapper <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, verbose=interactive()) {
   if( useCI && ! is.null(CIpoints) ) {
     locdata <- data.frame(rbind(MSLE=object$MSL$MSLE,CIpoints))
     etas <- predict(object, newdata=locdata,variances=list(linPred=TRUE,dispVar=TRUE,cov=TRUE))
@@ -7,7 +7,7 @@ RMSEwrapper <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, ver
     MSEs <- c(MSL=covmat[1,1],diag(covmat[-1,-1,drop=FALSE])+covmat[1,1]-2*covmat[1,-1])
   } else {
     etas <- predict(object,newdata=object$MSL$MSLE,variances=list(linPred=TRUE,dispVar=TRUE))
-    MSEs <- structure(attr(etas,"predVar")[1L],names="MSL")
+    MSEs <- structure(attr(etas,"predVar")[1L],names="MSL") ## of predict= of logL
   }
   if ( any(MSEs<0) ) {
     if (inherits(object,"SLik")) {
@@ -45,7 +45,7 @@ RMSEwrapper <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, ver
 }
 
 # creates <slik>$par_RMSEs 
-par_RMSEwrapper <- function(object,verbose=interactive()) {
+.par_RMSEwrapper <- function(object,verbose=interactive()) {
   RMSEs <- object$RMSEs
   if( (lenRMSEs <- length(RMSEs))>1L)  {
     CIs <- object$CIobject$CIs
@@ -136,7 +136,8 @@ SLR <- function(object,newdata=NULL,variance="predVar",df=NULL) {
 #SLR(slik)
 
 # both SLik and SLikp, with different methods used in -> allCIs -> confint
-MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),...) { ##
+MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
+                 eval_RMSEs=inherits(object,"SLik"), ...) { ##
   # Maximization ## revised 13/07/2016
   fittedPars <- object$colTypes$fittedPars
   if (inherits(object,"SLik")) {
@@ -145,6 +146,7 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),...) { ##
     lower <- lowup[1L,]
     upper <- lowup[2L,]
   } else {
+    if (verbose) cat(paste(nrow(object$logLs),"simulated samples;\n"))
     lower <- object$lower
     upper <- object$upper
   }
@@ -204,22 +206,29 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),...) { ##
   } else object$CIobject <- NULL
   # MSEs computation
   if (inherits(object$fit,"HLfit")) {
-    object$RMSEs <- RMSEwrapper(object,verbose=FALSE)
-    object$par_RMSEs <- par_RMSEwrapper(object,verbose=FALSE)
-    if  (verbose) {
-      if ( ! is.null(object$par_RMSEs)) {
-        overcat("*** Interval estimates and RMSEs ***\n",prevmsglength)
-        print(object$par_RMSEs)
-      } else {overcat("Interval estimates and RMSEs not available.\n",prevmsglength)}
-    }
+    object$RMSEs <- .RMSEwrapper(object,verbose=FALSE)
   } else {
-    object$pars <- par_wrapper(object,verbose=FALSE) ## quick patch b/c no RMSEs
-    if  (verbose) {
+    if (eval_RMSEs) {
+      if  (verbose) overcat("Computing RMSEs... (may be slow)\n",prevmsglength)
+      object$RMSEs <- .RMSEwrapper.SLik_j(object,verbose=FALSE)
+    } else {
+      object$pars <- par_wrapper(object,verbose=FALSE) ## quick patch b/c no RMSEs
+    } 
+  }
+  object$par_RMSEs <- .par_RMSEwrapper(object,verbose=FALSE)
+  if  (verbose) {
+    if ( ! is.null(object$par_RMSEs)) {
+      overcat("*** Interval estimates and RMSEs ***\n",prevmsglength)
+      print(object$par_RMSEs)
+    } else {
       overcat("*** Interval estimates ***\n",prevmsglength)
       print(object$pars)
     }
   }
-  if (is.null(object$logLs$cumul_iter)) object$logLs$cumul_iter <- 1L
+  if (is.null(object$logLs$cumul_iter)) {
+    object$logLs$cumul_iter <- 1L ## adds a column to the data frame
+    attr(object$logLs,"n_first_iter") <- nrow(object$logLs)
+  }
   invisible(object)
 }
 

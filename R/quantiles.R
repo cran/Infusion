@@ -155,8 +155,9 @@ infer_surface.tailp <- function(object,
   return(.Object)   
 } 
 
-refine.SLikp <- function(object,...) {
-  refine.default(object,surfaceData=object$tailp,...)
+refine.SLikp <- function(object,method=NULL,...) {
+  if (is.null(method)) method <- "PQL"
+  refine.default(object,surfaceData=object$tailp,method=method,...)
 }
 
 print.SLikp <-function(x,...) {summary(x)} ## indeed summarizes the list... unless a summary.SLik definition is available
@@ -190,7 +191,7 @@ calc.lrthreshold.SLikp <- function(object,dlr=NULL,verbose=interactive(),...) {
   dlogit <- object$fit$family$linkfun(1-dtailp) ## typically logit(0.001)
   if (verbose) {
     cat("Default logit(tailp) threshold and probable prediction error:\n")
-    locstring <- paste(prettysignif(-dlr)," and ",prettysignif(probErr),"\n",sep="")
+    locstring <- paste(.prettysignif(-dlr)," and ",.prettysignif(probErr),"\n",sep="")
     cat(locstring)
   }
   ## expand beyond *predicted* dlr threshold  ## this should be disconnected from GV$hullExpandFactor

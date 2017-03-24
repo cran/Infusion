@@ -12,7 +12,7 @@
   This is a generic function with currently methods for \code{SLik} and \code{SLikp} objects (as produced by \code{\link{MSL}}). Depending on the value of its \code{newsimuls} argument, and on whether the function used to generate empirical distributions can be called by R, it (1) defines new parameters points and/or (2) infers their summary likelihood or tail probabilities for each parameter point independently, adds the inferred values results as input for refined inference of likelihood or P-value response surface, and provides new point estimates and confidence intervals.
 }
 \usage{
-\method{refine}{SLik}(object,...)
+\method{refine}{SLik}(object, method=NULL, ...)
 %\method{refine}{SLik_j}(object,...)
 %\method{refine}{SLikp}(object,...)
 \method{refine}{default}(object, surfaceData, maxit = 1, n = NULL, 
@@ -62,7 +62,7 @@ A number of parameter points (excluding replicates and confidence interval point
     A given precision on the CI bounds themselves might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
   }
   \item{method}{(A vector of) suggested method(s) for estimation of smoothing parameters (see \code{method} argument of \code{\link{infer_surface}}). The ith element of the vector is
-  used in the ith iteration, if available; otherwise the last element is used. This argument is not always heeded, in that REML may be used if the suggested method is GCV but it appears to perform poorly. The default for \code{SLikp} objects is \code{PQL}; for \code{SLik} objects it is \code{"REML"}. 
+  used in the ith iteration, if available; otherwise the last element is used. This argument is not always heeded, in that REML may be used if the suggested method is GCV but it appears to perform poorly. The default for \code{SLikp}, \code{SLik_j}, and \code{SLikp} objects are \code{"REML"}, \code{"mixmodCluster"}, and \code{"PQL"}, respectively. 
   }
   \item{\dots}{
 further arguments passed to or from other methods. \code{refine} passes these arguments to the \code{plot} method suitable for the \code{object}. 

@@ -28,7 +28,7 @@ Infusion.getOption(x)
 \item{\code{precision = 0.1}:}{default value of \code{precision} argument of \code{\link{refine}}. Targets RMSE of log L and log LR estimates.}
 \item{\code{nRealizations=1000}:}{default value of \code{nRealizations} argument of \code{\link{add_simulation}}. Number of realizations for each empirical distribution.}
 \item{\code{mixmodGaussianModel="Gaussian_pk_Lk_Dk_A_Dk"}:}{default models used in clustering by \code{Rmixmod}. Run \code{Rmixmod::mixmodGaussianModel()} for a list of possible models, and see the statistical documentation (Mixmod Team 2016) for explanations about them.}
-\item{\code{nbCluster = quote(ceiling(nrow(data)^0.3))}:}{default value of \code{nbCluster} used in clustering by \code{Rmixmod}}
+\item{\code{nbCluster = quote(seq(ceiling(nrow(data)^0.3)))}:}{default value of \code{nbCluster} used in clustering by \code{Rmixmod}}
 \item{\code{example_maxtime=2.5}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples (or some very rough approximation for it) on one author's laptop is compared to this value.} 
 } 

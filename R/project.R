@@ -34,7 +34,7 @@ project.character <- function(x,
         essfit <- fitme(form,data=randsim, fixed=list(nu=4), 
                          method=method, init=list(rho=rep(NA,length(stats)))) 
       } else essfit <- corrHLfit(form,data=randsim,init.corrHLfit=list(rho=rep(NA,length(stats))),ranFix=list(nu=4))  
-      ranfix <- c(essfit$corrPars,lambda=essfit$lambda,phi=essfit$phi)
+      ranfix <- c(essfit$corrPars,list(lambda=essfit$lambda,phi=essfit$phi))
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]
     } else if (method=="GCV") {## no difference between trainingSize and knotNbr
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]

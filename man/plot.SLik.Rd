@@ -6,10 +6,12 @@
 Plot SLik or SLikp objects
 }
 \usage{
-\method{plot}{SLik}(x, y, filled=FALSE, decorations=NULL,
+\method{plot}{SLik}(x, y, filled = FALSE, decorations = NULL,
                     color.palette = NULL, plot.axes = NULL, 
                     plot.title = NULL, ...)
-%\method{plot}{SLik_j}(x, y, filled=FALSE, decorations=NULL,...)
+\method{plot}{SLik_j}(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
+                      color.palette = NULL, plot.axes = NULL, 
+                      plot.title = NULL, ...)
 %\method{plot}{SLikp}(x, y, filled=FALSE, log.=TRUE,...)
 }
 \description{
