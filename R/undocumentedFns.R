@@ -1,4 +1,4 @@
-seekSimplex <- function(point,constraintsList) {
+.seekSimplex <- function(point,constraintsList) {
   it <- 1L
   while(it < length(constraintsList)+1L) {
     if (isPointInCHull(point,constraints=constraintsList[[it]])) {
@@ -12,7 +12,7 @@ seekSimplex <- function(point,constraintsList) {
 #jitterPoints <- function(focalpoints,vT,constraintsList,expand=1,u=NULL) { ## FR->FR not used removed 04/2016
 #...
 
-findConstraints <- function(vT) {
+.findConstraints <- function(vT) {
   sT <- vT$simplicesTable
   knots <- vT$vertices
   constraintsList <- lapply(seq(nrow(sT)),function(it) {
@@ -54,14 +54,14 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   # pb when focal is near the edge... and ugly solution since findConstraints is slow
   ## add vertices of simplex where focal is ! $vertices not ordered as m !
   #   vT <- volTriangulation(m)  
-  #   constraintsList <- findConstraints(vT)
-  #   whereIsStatObs <- seekSimplex(focal,constraintsList)
+  #   constraintsList <- .findConstraints(vT)
+  #   whereIsStatObs <- .seekSimplex(focal,constraintsList)
   #   knots <- rbind(knots,vT$vertices[vT$simplicesTable[whereIsStatObs,],]) 
   #
   vT <- volTriangulation(as.matrix(knots)) ## j'ai rajouté les bary dans la sortie. Y penser pour migraineLike 
   ## locate points from m into the simplices
-  constraintsList <- findConstraints(vT) ## FR->FR slow
-  foundSimplices <- apply(m,1,seekSimplex,constraintsList=constraintsList)
+  constraintsList <- .findConstraints(vT) ## FR->FR slow
+  foundSimplices <- apply(m,1, .seekSimplex, constraintsList=constraintsList)
   messy <- table(foundSimplices) ## zero counts restored below  (while 'tabulate' keep them only for internal categories !)
   counts <- integer(length(constraintsList))
   counts[as.numeric(names(messy))] <- messy ## restores zero counts
@@ -75,7 +75,7 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   resu
 }
 
-smoothEDF_s <- function(data,pars=c(), verbose=FALSE,...) {
+.smoothEDF_s <- function(data,pars=c(), verbose=FALSE,...) {
   #browser()
   stats <- attr(data,"stats")
   counts <- attr(data,"counts")
@@ -150,7 +150,7 @@ smoothEDF_s <- function(data,pars=c(), verbose=FALSE,...) {
   signif(x,n)
 }
 
-allCIs <- function(object,level=0.95, verbose=TRUE,method="LR",...) {
+.allCIs <- function(object,level=0.95, verbose=TRUE,method="LR",...) {
   CIs <- list()
   for (st in object$colTypes$fittedPars) {CIs[[st]] <- confint(object,st,level=level, verbose=verbose,method=method,...)}
   lowers <- lapply(CIs,function(li) {li$lowerpar})

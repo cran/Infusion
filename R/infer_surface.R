@@ -1,6 +1,6 @@
 "infer_surface" <- function(object, ...) UseMethod("infer_surface") ## makes it easy to develop new inference methods
 
-check_surface_input <- function(object) {
+.check_surface_input <- function(object) {
   colTypes <- attr(object,"colTypes")
   fittedPars <- colTypes$fittedPars
   if (length(fittedPars)==0L) stop("No fitted parameters found.")
@@ -16,10 +16,11 @@ check_surface_input <- function(object) {
 
 # object is a data frame with attributes; no object$colTypes or $stat.obs... nor $fit...
 infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allFix=NULL,...) {
+  rownames(object) <- make.names(rownames(object),unique = TRUE)
   ## late addition 02/2016: 
   object <- object[ ! is.na(object[,"logL"]),,drop=FALSE]
   ## logL = NA then represents only singularities in distributions of statistics
-  check_surface_input(object)
+  .check_surface_input(object)
   colTypes <- attr(object,"colTypes")
   fittedPars <- colTypes$fittedPars
   np <- length(fittedPars)
@@ -94,7 +95,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
       ranfix <- c(ranfix,list(lambda=thisfit$lambda,phi=thisfit$phi))  
       etafix <- list(beta=fixef(thisfit))
     } else { ## handles all HLfit methods
-      purgedlogLs$uli <- as.factor(ULI(purgedlogLs[,fittedPars])) 
+      purgedlogLs$uli <- as.factor(.ULI(purgedlogLs[,fittedPars])) 
       init.phi.form <- as.formula(paste(logLname,"~ uli"))
       ## FR->FR palliatif a probleme de spaMM init values
       resglm <- glm(init.phi.form,data=purgedlogLs)

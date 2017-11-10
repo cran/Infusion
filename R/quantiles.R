@@ -1,4 +1,4 @@
-infer_LR_pvalue_from_EDF  <- function(EDF,stat.obs,tailNames,
+.infer_LR_pvalue_from_EDF  <- function(EDF,stat.obs,tailNames,
                              refDensity, ## a reference density used for ordering of all EDF samples; typically the density( ; ML)
                              verbose) {
   locEDF <- EDF[,names(stat.obs),drop=FALSE] 
@@ -11,7 +11,7 @@ infer_LR_pvalue_from_EDF  <- function(EDF,stat.obs,tailNames,
     if (verbose) cat(".")
     trend <- rep(1,nrow(histo)) 
     histo$trend <- trend
-    fit <- smoothEDF_s(histo, pars=c())
+    fit <- .smoothEDF_s(histo, pars=c())
     L0EDF <- as.numeric(predict(fit,cbind(EDF,binFactor=1,trend=1))) 
     L1EDF <- as.numeric(predict(refDensity,cbind(EDF,binFactor=1,trend=1))) 
     L0obs <- as.numeric(predict(fit,c(stat.obs,1,1))) ## 1 for binFactor and 1 for trend
@@ -26,7 +26,8 @@ infer_LR_pvalue_from_EDF  <- function(EDF,stat.obs,tailNames,
 }
 # wrongordering.R.txt has a more "Fisherian" ordering function
 
-infer_refDensity <- function(object,nRealizations= ## revise
+# fixme not currently used
+.infer_refDensity <- function(object,nRealizations= ## revise
                                10*Infusion.getOption("nRealizations")) { ## from SLik object
   ori_nReal <- Infusion.getOption("nRealizations")
   refSimul <- add_simulation(,Simulate=attr(object$logLs,"Simulate"),
@@ -37,7 +38,7 @@ infer_refDensity <- function(object,nRealizations= ## revise
   EDF <- (refSimul[[1]])[,names(stat.obs),drop=FALSE]
   histo <- multi_binning(EDF,focal=stat.obs)
   histo$trend <- 1
-  fit <- smoothEDF_s(histo, pars=c())
+  fit <- .smoothEDF_s(histo, pars=c())
   return(fit)
 }
 
@@ -51,7 +52,7 @@ infer_tailp <- function(object, ## object is a list of EDFs
 ) {
   
   if (is.null(method)) {
-    locfn <- "infer_LR_pvalue_from_EDF"
+    locfn <- ".infer_LR_pvalue_from_EDF"
   } else locfn <- method ## leaves method unchanged, see attributes of return value below   
   allPars <- names(attr(object[[1]],"par"))
   Sobs.tailp <- lapply(object, locfn, refDensity=refDensity, stat.obs=stat.obs,tailNames=tailNames,verbose=verbose) 
@@ -59,11 +60,12 @@ infer_tailp <- function(object, ## object is a list of EDFs
   Sobs.tailp <- data.frame(Sobs.tailp[,c(allPars,tailNames,"isValid"),drop=FALSE])
   ## Attributs encombrants pour une data.frame. Puisqu'on a défini une classe, on pourrait la structurer autrement... 
   ##           le pb c'est celui de traitements homogènes avec SLik 
-  attr(Sobs.tailp,"EDFstat") <- method ## same as input argument: may be NULL
-  attr(Sobs.tailp,"stat.obs") <- stat.obs
-  attr(Sobs.tailp,"refDensity") <- refDensity
+  attr(Sobs.tailp,"call") <- match.call()
+  attr(Sobs.tailp,"EDFstat") <- method ## maybe not useful see in "call" : fixme
+  attr(Sobs.tailp,"stat.obs") <- stat.obs ## maybe not useful see in "call" : fixme
+  attr(Sobs.tailp,"refDensity") <- refDensity ## maybe not useful see in "call" : fixme
   attr(Sobs.tailp,"Simulate") <- attr(object,"Simulate")
-  attr(Sobs.tailp,"callfn") <- "infer_tailp"
+  attr(Sobs.tailp,"callfn") <- "infer_tailp" ## maybe not useful see in "call" : fixme
   attr(Sobs.tailp,"projectors") <- attr(object,"projectors")
   whichvar <- apply(Sobs.tailp[,allPars,drop=FALSE],2,function(v) length(unique(range(v)))>1)
   fittedPars <- allPars[whichvar]
@@ -85,17 +87,42 @@ confint.SLikp <- function(object, parm, ## parm is the parameter which CI is sou
   #level <- 1-(1-level)/2 ## convertit en 0.975 puique mon test est unilat
   # conversion from LRT n df to 1 df to have a 1D confidence interval
   level <- pchisq( qchisq(level, df=length(object$MSL$MSLE)), df=1) ## e.g. 0.9856 pour 2df
-  confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
+  .confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
              givenmax = 1,
              level= - level, verbose=verbose,fixed=fixed,which=which,...)
 }
+
+# moved from spaMM
+
+.noNonSpatialbarsMM <- function (term) {
+  if (!("|" %in% all.names(term))) 
+    return(term)
+  if (is.call(term) && term[[1]] == as.name("|")) 
+    return(NULL) ## removes (|) but not Matern(|)
+  if (length(term) == 2L) {
+    term1 <- as.character(term[[1]])
+    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
+      return(term) 
+    } else return(.noNonSpatialbarsMM(term[[2]])) 
+  }
+  nb2 <- .noNonSpatialbarsMM(term[[2]])
+  nb3 <- .noNonSpatialbarsMM(term[[3]])
+  if (is.null(nb2)) 
+    return(nb3)
+  if (is.null(nb3)) 
+    return(nb2)
+  term[[2]] <- nb2
+  term[[3]] <- nb3
+  term
+}
+
 
 infer_surface.tailp <- function(object, 
                                     method="PQL", ## default changed 23/03/2015 
                                     verbose=interactive(),
                                     allFix=NULL,
                                     ...) {
-  check_surface_input(object)
+  .check_surface_input(object)
   colTypes <- attr(object,"colTypes")
   fittedPars <- colTypes$fittedPars
   EDFestLevelName <- Infusion.getOption("EDFestLevelName")
@@ -148,7 +175,7 @@ infer_surface.tailp <- function(object,
   .Object$Qmax <- max(thisfit$family$linkfun(obspred)+1.96 * sqrt(obsVar)) ## best improvement function for computed points 
   #
   .Object$fit <- thisfit   
-  .Object$predictReForm <- noNonSpatialbarsMM(form)
+  .Object$predictReForm <- .noNonSpatialbarsMM(form)
   .Object$projectors <- attr(object,"projectors")
   .Object$EDFstat <- attr(object,"EDFstat")## may be NULL
   class(.Object) <- c("SLikp",class(.Object))

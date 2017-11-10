@@ -22,6 +22,7 @@ project.character <- function(x,
   } else {
     stop("'data' are neither a data frame nor a list of data frames.")
   }
+  rownames(totsim) <- make.names(rownames(totsim),unique = TRUE)
   nr <- nrow(totsim)
   if (is.character(method) && method %in% c("GCV","REML")) {
     form <- as.formula(paste(x," ~ 1 + Matern(1|",paste(stats,collapse="+"),")"))
@@ -87,7 +88,7 @@ project.character <- function(x,
 }
 
 # wrapper for handling names 
-predictWrap <- function(oneprojector,newdata,...) {
+.predictWrap <- function(oneprojector,newdata,...) {
   if (inherits(newdata,"numeric")) {
     stats <- attr(oneprojector,"stats") ## should be non-null if projector.character used a formula
     ## else names should (?) not be required and then stats is ideally NULL
@@ -144,7 +145,7 @@ project.default <- function (x,projectors,...) {
     #if ( ! is.null(stats)) {
     #  ly <- lapply(projectors,locpredict,newdata=x[,stats,drop=FALSE]) ## keep x cols unchanged for later use
     #} else 
-    ly <- lapply(projectors,predictWrap,newdata=x)    
+    ly <- lapply(projectors, .predictWrap, newdata=x)    
   }
   ly <- do.call(cbind,ly) ## binding is over projectors
   if (is.vector(x)) {

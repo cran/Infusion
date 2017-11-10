@@ -2,6 +2,7 @@
 \alias{project}
 \alias{project.character}
 \alias{project.default}
+\alias{neuralNet}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Learn a projection method for statistics and applies it 

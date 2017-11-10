@@ -1,5 +1,5 @@
 
-calc_EI <- function(summInferObject,points,Qmax=NULL) {  ## for both SLik and SLikp
+.calc_EI <- function(summInferObject,points,Qmax=NULL) {  ## for both SLik and SLikp
   trypred <- predict(summInferObject,newdata=points,variances=list(linPred=TRUE,dispVar=TRUE))
   tryVar <- attr(trypred,"predVar")
   if (any(tryVar<0))  { ## anticipating numerical problems (ignore also spuriously large tryVar values)
@@ -20,7 +20,7 @@ calc_EI <- function(summInferObject,points,Qmax=NULL) {  ## for both SLik and SL
 # has an SLik method
 
 calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) {
-  stop(pastefrom("No default method for calc.lrthreshold. Provide a method."))
+  stop("No default method for calc.lrthreshold. Provide a method.")
 }
 
 
@@ -67,7 +67,7 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         ## replace pairs with low predicted lik by pairs with high predicted lik
         pred <- predict(object$fit,binding=logLname) 
         ## : corrected 11/07/2016: pred was predict(object,.) using object$logLs, not object$fit, thereby not matching uli
-        uli <- ULI(object$fit$data[,fittedPars])
+        uli <- .ULI(object$fit$data[,fittedPars])
         table_uli <- table(uli)
         CIthreshold <- object$MSL$maxlogL - (qchisq(level,df=1)/2)
         singletsLvls <- names(table_uli)[table_uli==1L]
@@ -124,9 +124,16 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       if ( ! inherits(newsimuls,"list") ) {
         stop("'newsimuls' must be a _list_ of empirical distributions.")
       }
-      arglist <- list(object=newsimuls,stat.obs=stat.obs,verbose=verbose$most,method=object$EDFstat) ## method may be NULL
-      if (inherits(object,"SLikp")) arglist$refDensity <- object$refDensity 
-      newlogLs <- do.call(attr(surfaceData,"callfn"),arglist)   ### call density estimation
+      if (inherits(object,"SLikp")) {
+        mc <- attr(object$tailp,"call")
+      } else {
+        mc <- attr(object$logLs,"call")
+      } 
+      mc$object <- newsimuls
+      mc$verbose <- verbose$most
+      mc$`stat.obs` <- attr(object$logLs,"stat.obs") ## bc otherwise mc$`stat.obs` stores a promise such as 'Sobs'
+      # if (inherits(object,"SLikp")) arglist$refDensity <- object$refDensity 
+      newlogLs <- eval(mc)
       if (verbose$most) cat ("\n")
       successrate <- length(which(newlogLs$isValid>0))/nrow(newlogLs)
       EIsampleFactor <- EIsampleFactor * 0.98/successrate
@@ -149,7 +156,6 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         relerr <- respvar/(1e-6+msepred)
         #print(paste("relerr:",relerr))
         smoothingOK <- (relerr>0.8 && relerr<1.25) ## practically always, given distrib of estimator 'relerr'  
-        #
         currsurf <- infer_surface(surfaceData,method=itmethod,verbose=FALSE,allFix=allFix)
         #
         if (FALSE) {
@@ -181,7 +187,14 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       object$latestPoints <- nrow(surfaceData)+1-seq_len(nrow(newlogLs)) ## for plots
     }    
     # maximization, new CIs, new MSEs
+    # ! ! ! ! ! above calls to infer_surface() potentially change rownames of object$logLs relative to those of surfaceDate
+    # bc infer_surface() -> make.names(). One solution is to get surfaceData from the new MSL object: 
     object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most)
+    if (inherits(object,"SLikp")) {
+      surfaceData <- object$tailp
+    } else {
+      surfaceData <- object$logLs
+    } 
     if (inherits(object,"SLik_j")) {attr(object$logLs,"freq_good") <- freq_good} 
     MSEs <- object$RMSEs^2
     if (verbose$movie) plot(object,...)

@@ -16,7 +16,8 @@ infer_logLs(object, stat.obs,
             logLname = Infusion.getOption("logLname"), 
             verbose = list(most=interactive(), 
                            final=FALSE), 
-            method="infer_logL_by_Rmixmod",
+            method = "infer_logL_by_Rmixmod",
+            nb_cores = NULL, packages = NULL,
             ...)
 infer_tailp(object, refDensity, stat.obs,
                 tailNames=Infusion.getOption("tailNames"),
@@ -52,6 +53,10 @@ infer_logL_by_Hlscv.diag(EDF,stat.obs,logLname,verbose)
   \item{method}{
   A function for density estimation. See Description for the default behaviour and Details for the constraints on input and output of the function. 
 }
+  \item{nb_cores}{Number of cores for parallel computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
+  
+  \item{packages}{For parallel evaluation: Names of additional libraries to be loaded on the cores, necessary for evaluation of a user-defined 'method'.}
+  
   \item{\dots}{
 further arguments passed to or from other methods (currently not used).
 }

@@ -10,6 +10,11 @@
                                projTrainingSize=200,
                                projKnotNbr=300,
                                example_maxtime=2.5,
+                               ## partly doc'ed and does not need more
+                               cores_avail_warned=FALSE,
+                               nb_cores_warned=FALSE,
+                               nb_cores=NULL,
+                               doSNOW_warned=FALSE,
                                ## undocumented
                                binningExponent=0.5,
                                zeromargin=0.1,
@@ -26,7 +31,6 @@
 
 Infusion.options <- function(...) {
   if (nargs() == 0) return(.Infusion.data$options)
-  current <- .Infusion.data$options
   temp <- list(...)
   if (length(temp) == 1 && is.null(names(temp))) {
     arg <- temp[[1]]
@@ -35,12 +39,13 @@ Infusion.options <- function(...) {
            character = return(.Infusion.data$options[arg]),  ## return here for eg ... = "NUMAX"
            stop("invalid argument: ", sQuote(arg)))
   }
-  if (length(temp) == 0) return(current)
-  n <- names(temp)
-  if (is.null(n)) stop("options must be given by name")
-  current[n] <- temp
-  .Infusion.data$options <- current
-  invisible(current)
+  if (length(temp) == 0) return(.Infusion.data$options)
+  argnames <- names(temp)
+  if (is.null(argnames)) stop("options must be given by name")
+  old <- .Infusion.data$options[argnames]
+  names(old) <- argnames ## bc names are not valid for previously absent elements
+  .Infusion.data$options[argnames] <- temp
+  invisible(old)
 }
 
 Infusion.getOption <- function (x) {Infusion.options(x)[[1]]}
@@ -58,5 +63,5 @@ Infusion.getOption <- function (x) {Infusion.options(x)[[1]]}
 
 ".onLoad" <- function (lib, pkg) {
   .Infusion.data$Constants$Version <- utils::packageVersion("Infusion")
-  abyss <- suppressMessages(delaunayn(matrix(1,nrow=2,ncol=1))) # *sigh*
+  #abyss <- suppressMessages(delaunayn(matrix(1,nrow=2,ncol=1))) # *sigh*
 }  

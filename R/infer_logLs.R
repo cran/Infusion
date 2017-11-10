@@ -9,19 +9,22 @@ infer_logL_by_GLMM <- function(EDF,stat.obs,logLname,verbose) {
   if (is.null(histo)) {
     #if (verbose) cat("!")
     obscov <- cov(locEDF) ## FR->FR remplacable par mixture model ?
-    obsmean <- colMeans(locEDF)
-    logL <- try(-LogAbsDetWrap(obscov) -log(2*pi)*length(obsmean) - (stat.obs-obsmean)%*%solve(obscov,(stat.obs-obsmean)),silent=TRUE)
-    if (class(logL)=="try-error") { ## presumably because solve failed on singular matrix
-      diag(obscov) <- diag(obscov)+ 1e-12 ## quick patch
-      logL <- -LogAbsDetWrap(obscov) -log(2*pi)*length(obsmean) - (stat.obs-obsmean)%*%solve(obscov,(stat.obs-obsmean))
+    lad <- determinant(obscov)$modulus[1]
+    # pb general est cert eigenvalues peuvent -> +inf et d'autres -inf auquel cas logabsdet peut être innocuous mais pas estimaable précisément   
+    if (is.nan(lad) || is.infinite(lad)){## because of determinant of nearly singular matrix
+      zut <- abs(eigen(obscov,only.values = TRUE)$values) 
+      zut[zut<1e-12] <- 1e-12
+      lad <- sum(log(zut)) 
     }
+    obsmean <- colMeans(locEDF)
+    logL <- -lad -log(2*pi)*length(obsmean) - (stat.obs-obsmean)%*%solve(obscov,(stat.obs-obsmean))
     logL <- logL/2
     isValid <- FALSE
   } else {
     #if (verbose) cat(".")
     trend <- rep(1,nrow(histo)) 
     histo$trend <- trend
-    fit <- smoothEDF_s(histo, pars=c())
+    fit <- .smoothEDF_s(histo, pars=c())
     pred <- predict(fit,c(stat.obs,1,1)) ## 1 for binFactor and 1 for trend
     logL <- log(pred)
     isValid <- TRUE
@@ -79,7 +82,7 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
 infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   stats <- names(stat.obs)
   locEDF <- EDF[,stats,drop=FALSE] 
-  fit <- densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod
+  fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod
   if (length(fit@nbCluster)==0L) { ## likely degenerate distribution
     checkfix <- apply(locEDF,2,var)==0
     ucheckfix <- apply(locEDF[,checkfix,drop=FALSE],2,unique)
@@ -102,12 +105,15 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   unlist(c(attr(EDF,"par"),logL,isValid= ! invalid)) 
 }
 
+## when the return value of infer_logLs() is changed the densv and densb data must be recomputed
 infer_logLs <- function(object,
                         stat.obs,
                         logLname=Infusion.getOption("logLname"), 
                         verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                      final=FALSE),  
                         method="infer_logL_by_Rmixmod",
+                        nb_cores=NULL,
+                        packages=NULL,
 #                        fittedPars=NULL,
                         ... ## required because if generic includes them...
 ) {
@@ -120,33 +126,22 @@ infer_logLs <- function(object,
   if (is.null(verbose$most)) verbose$most <- interactive()
   if (is.null(verbose$final)) verbose$final <- FALSE
   allPars <- names(attr(object[[1]],"par"))
-  object <- check_logLs_input(object)
-  prevmsglength <- 0L
-  nInvalid <- 0L
-  lit <- 0L
-  Sobs.densities <- lapply(object, function(element) {
-    par_logL_indic <- do.call(method, list(EDF=element,stat.obs=stat.obs,logLname=logLname,verbose=verbose))
-    # par_logL_indic is vector of pars + logL + isValid
-    if (! par_logL_indic["isValid"]) nInvalid <<- nInvalid+1L
-    lit <<- lit+1L
-    if (verbose$most) {
-      msg <- paste("Already ", lit, " distributions smoothed",sep="")
-      if (nInvalid>0L) msg <- paste(msg," (",nInvalid," tagged as 'outlier'(s))",sep="")
-      prevmsglength <<- overcat(msg, prevmsglength)
-    }
-    return(par_logL_indic)
-  }) 
-  if (verbose$final) {
-    msg <- paste(lit, " distributions smoothed",sep="")
-    if (nInvalid>0L) msg <- paste(msg," (",nInvalid," tagged as 'outlier'(s))",sep="")
-    msg <- paste(msg,"            ")
-    prevmsglength <<- overcat(msg, prevmsglength)
-  }
+  object <- .check_logLs_input(object)
+  
+  cores_info <- .init_cores(nb_cores=nb_cores)
+  Sobs.densities <- vector("list", length(object)) #matrix(NA,nrow=NROW(parGrid),ncol=4L) ## FR: doit être pré- déclarée, si j'en crois mon code...
+  method_arglist <- list(stat.obs=stat.obs,logLname=logLname,verbose=verbose)
+  # make sure that a user-defined nondefault method is converted to a string: 
+  if ( ! is.null(cores_info$cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
+  Sobs.densities <- .run_cores(method, object, cores_info, stat.obs=stat.obs,packages=packages,logLname=logLname,verbose=verbose)
+  if ( cores_info$nb_cores > 1L) parallel::stopCluster(cores_info$cl)
+  
   Sobs.densities <- do.call(rbind,Sobs.densities)  
   Sobs.densities <- data.frame(Sobs.densities[,c(allPars,logLname,"isValid"),drop=FALSE])
   if (nrow(Sobs.densities)==0L) {
     stop("No valid density estimates found")
   }
+  attr(Sobs.densities,"call") <- match.call() ## to get the extra arguments such as packages for refine() -> infer_logLs()
   attr(Sobs.densities,"EDFstat") <- method ## 
   attr(Sobs.densities,"stat.obs") <- stat.obs
   attr(Sobs.densities,"Simulate") <- attr(object,"Simulate")

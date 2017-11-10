@@ -3,7 +3,7 @@
 ## same methods for SLikp and SLik because the code differs only on one line...
 confint.SLik <- function(object, parm, ## parm is the parameter which CI is sought 
                          level=0.95, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
-  confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
+  .confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
              givenmax = object$MSL$maxlogL,
              level= - qchisq(level,df=1)/2, ## df=1 for 1D profile; /2 to compare to logLR rather than 2 logLR  
              verbose=verbose,fixed=fixed,which=which,...)
@@ -48,7 +48,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
 }
 
 
-confintAll <- function(object, parm, ## parm is the parameter which CI is sought
+.confintAll <- function(object, parm, ## parm is the parameter which CI is sought
                        givenmax=NULL,
                        level, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
   if (is.null(givenmax)) stop("The point estimates should be computed before using 'confint'.")

@@ -162,7 +162,7 @@ predict.SLik_j <- function (object,
 
 confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is sought 
                          level=0.95, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
-  confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
+  .confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
              givenmax = object$MSL$maxlogL,
              level= - qchisq(level,df=1)/2, ## df=1 for 1D profile; /2 to compare to logLR rather than 2 logLR  
              verbose=verbose,fixed=fixed,which=which,...)
@@ -291,7 +291,7 @@ profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no nee
   boo_SLik_joint <- function(simul) {
     it <<- it+1
     locmess <- paste("boostrap replicate",it,"of",nsim,"   ")
-    if (verbose) {prevmsglength <<- overcat(locmess,prevmsglength = prevmsglength)}
+    if (verbose) {prevmsglength <<- .overcat(locmess,prevmsglength = prevmsglength)}
     boo[] <- simul
     densv <- infer_SLik_joint(boo,stat.obs=attr(object$logLs,"stat.obs"),
                               nbCluster=list(jointdens=object$jointdens@nbCluster,

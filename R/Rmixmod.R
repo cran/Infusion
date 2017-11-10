@@ -1,6 +1,6 @@
 ## interfaces for a predict method from Rmixmod output
 
-densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster")) {
+.densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster")) {
   # stat.obs useful for boundaries and to handle degenerate distributions:
   nbCluster <- eval(nbCluster)
   statNames <- colnames(data)

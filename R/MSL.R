@@ -79,7 +79,7 @@
   } else return(NULL)
 }
 
-par_wrapper <- function(object,verbose=interactive()) {
+.par_wrapper <- function(object,verbose=interactive()) {
   CIs <- object$CIobject$CIs
   lenCIs <- length(CIs)    
   pars <- names(CIs)
@@ -102,7 +102,7 @@ par_wrapper <- function(object,verbose=interactive()) {
 }
 
 ## summary likelihood ratio (with uncertainty measures) extractor. Unfinished, in particular, need to separate residVar an to handle prior.weights
-SLR <- function(object,newdata=NULL,variance="predVar",df=NULL) {
+.SLR <- function(object,newdata=NULL,variance="predVar",df=NULL) {
   fittedPars <- object$colTypes$fittedPars
   if (is.null(newdata)) newdata <- unique(object$logLs[,fittedPars])
   locdata <- rbind(MSLE=object$MSL$MSLE, ## name needed for spaMM::calcNewCorrs -> newuniqueGeo
@@ -133,7 +133,7 @@ SLR <- function(object,newdata=NULL,variance="predVar",df=NULL) {
   return(resu)
 }
 
-#SLR(slik)
+#.SLR(slik)
 
 # both SLik and SLikp, with different methods used in -> allCIs -> confint
 MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
@@ -198,30 +198,30 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
   if(CIs) {
     locverbose <- (verbose && ! inherits(object$fit,"HLfit")) ## for HLfit objetc, printing is later
     if (locverbose) {
-      prevmsglength <- overcat("Computing confidence intervals...\n", 0L) 
+      prevmsglength <- .overcat("Computing confidence intervals...\n", 0L) 
     } else {
       prevmsglength <- 0L
     }
-    object$CIobject <- allCIs(object,verbose=locverbose, level=level)  ## may be NULL
+    object$CIobject <- .allCIs(object,verbose=locverbose, level=level)  ## may be NULL
   } else object$CIobject <- NULL
   # MSEs computation
   if (inherits(object$fit,"HLfit")) {
     object$RMSEs <- .RMSEwrapper(object,verbose=FALSE)
   } else {
     if (eval_RMSEs) {
-      if  (verbose) overcat("Computing RMSEs... (may be slow)\n",prevmsglength)
+      if  (verbose) .overcat("Computing RMSEs... (may be slow)\n",prevmsglength)
       object$RMSEs <- .RMSEwrapper.SLik_j(object,verbose=FALSE)
     } else {
-      object$pars <- par_wrapper(object,verbose=FALSE) ## quick patch b/c no RMSEs
+      object$pars <- .par_wrapper(object,verbose=FALSE) ## quick patch b/c no RMSEs
     } 
   }
   object$par_RMSEs <- .par_RMSEwrapper(object,verbose=FALSE)
   if  (verbose) {
     if ( ! is.null(object$par_RMSEs)) {
-      overcat("*** Interval estimates and RMSEs ***\n",prevmsglength)
+      .overcat("*** Interval estimates and RMSEs ***\n",prevmsglength)
       print(object$par_RMSEs)
     } else {
-      overcat("*** Interval estimates ***\n",prevmsglength)
+      .overcat("*** Interval estimates ***\n",prevmsglength)
       print(object$pars)
     }
   }

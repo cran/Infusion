@@ -37,9 +37,6 @@ and possibly other undocumented values for development purposes.
 
 }
 \details{
-  Invoking \code{Infusion.options()} with no arguments returns a list with the
-  current values of the options. Invoking \code{Infusion.getOption(<option name>)} returns the value of the option rather than a list.
-  
   The default \code{nbCluster} value is the upper value of the range recommended in the \code{mixmod} statistical documentation (Mixmod Team, 2016). If clustering by the given number(s) of clusters fails, decreasing values are tryied until success.
 }
 \references{
@@ -50,7 +47,7 @@ Besançon, France. Version: February 10, 2016 retrieved from \url{http://www.mix
   For \code{Infusion.getOption}, the current value set for option \code{x}, or
   \code{NULL} if the option is unset.
 
-  For \code{Infusion.options()}, a list of all set options sorted by category.  For
+  For \code{Infusion.options()}, a list of all set options.  For
   \code{Infusion.options(name)}, a list of length one containing the set value,
   or \code{NULL} if it is unset.  For uses setting one or more options,
   a list with the previous values of the options changed (returned

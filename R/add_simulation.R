@@ -38,7 +38,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
       if (verbose) {
         if (nRealizations>1 || ! ii %% 1000 || ii==nsim ) {
           msg <- paste(ii,"simulations run out of", nsim," ")
-          prevmsglength <- overcat(msg, prevmsglength) ## does not work well in interactive call to knitr -> redirection of stderr to file; no overwriting
+          prevmsglength <- .overcat(msg, prevmsglength) ## does not work well in interactive call to knitr -> redirection of stderr to file; no overwriting
         } 
       }
     }

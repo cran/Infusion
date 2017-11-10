@@ -68,7 +68,7 @@ plot1Dprof <- function(object, ## SLik object
         y[ptit] <- profil(x[ptit])
         if (interactive()) {
           msg <- paste("Already ", ptit, " profile points computed out of ", gridSteps, "     ", sep="")
-          prevmsglength <- overcat(msg, prevmsglength)
+          prevmsglength <- .overcat(msg, prevmsglength)
         }
       }
       plot(x,y,xlab=.xlabs[[st]],ylab=ylab,axes=FALSE,frame=TRUE)
@@ -193,7 +193,7 @@ plot2Dprof <- function(object, ## SLik object
           Zvalues[ptjt,ptit] <- profil(c(xGrid[ptjt],yGrid[ptit]))
           if (interactive()) {
             msg <- paste("Already ", ij, " profile points computed out of ", npts, "     ", sep="")
-            prevmsglength <- overcat(msg, prevmsglength)
+            prevmsglength <- .overcat(msg, prevmsglength)
             ij <- ij + 1L
           }
         }

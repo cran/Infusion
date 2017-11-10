@@ -1,4 +1,4 @@
-check_logLs_input <- function(object) {
+.check_logLs_input <- function(object) {
   Naf <- rep(FALSE,length(object))
   for (lit in seq(length(object),1L,-1L)) { 
     if (any( ! is.finite(object[[lit]]))) Naf[lit] <- TRUE ## is.finite false for NA/NaN/Inf
