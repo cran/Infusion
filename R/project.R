@@ -35,7 +35,9 @@ project.character <- function(x,
         essfit <- fitme(form,data=randsim, fixed=list(nu=4), 
                          method=method, init=list(rho=rep(NA,length(stats)))) 
       } else essfit <- corrHLfit(form,data=randsim,init.corrHLfit=list(rho=rep(NA,length(stats))),ranFix=list(nu=4))  
-      ranfix <- c(essfit$corrPars,list(lambda=essfit$lambda,phi=essfit$phi))
+      corrPars <- essfit$corrPars[["1"]]
+      if (is.null(corrPars)) corrPars <- essfit$corrPars ## F I X M E transitional code 
+      ranfix <- c(corrPars,list(lambda=essfit$lambda,phi=essfit$phi))
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]
     } else if (method=="GCV") {## no difference between trainingSize and knotNbr
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]
@@ -165,11 +167,5 @@ project.default <- function (x,projectors,...) {
 }
 
 neuralNet <- function(formula,data) {
-  if (requireNamespace("caret",quietly=TRUE)) {
-    caret::train(formula, data, method='nnet',
-          linout=TRUE,
-          trace = FALSE)
-  } else {
-    stop("'caret' package not available.")
-  }
+  .mixclustWrap("train", list(form=formula, data=data, method='nnet', linout=TRUE, trace = FALSE), pack="caret")
 }

@@ -151,7 +151,9 @@ infer_surface.tailp <- function(object,
                          ranFix=list(nu=4),
                          HLmethod=method,
                          init.corrHLfit=init.corrHLfit) ## clean as one can expect
-    allFix <- c(thisfit$corrPars,list(lambda=thisfit$lambda))
+    corrPars <- thisfit$corrPars[["1"]]
+    if (is.null(corrPars)) corrPars <- thisfit$corrPars ## F I X M E transitional code 
+    allFix <- c(corrPars,list(lambda=thisfit$lambda))
   } else {
   }
   # 

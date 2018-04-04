@@ -55,7 +55,7 @@ plot.SLik <-function(x,y,filled=FALSE,
     if (inherits(object$fit,"HLfit")) {
       if (is.null(plot.title)) {
         ## also a language expression 
-        plot.title <- substitute(title(main="Summary likelihood ratio surface",
+        plot.title <- substitute(title(main="Summary-likelihood-ratio surface",
                                xlab=xlabv,ylab=ylabv),list(xlabv=fittedPars[1],ylabv=fittedPars[2]))
       }
       if (filled) {

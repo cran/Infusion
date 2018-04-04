@@ -53,19 +53,9 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   #   cluMeans <- clu@results[[1L]]@parameters@mean
   #   suspectPts <- (clu@results[[1L]]@partition == suspectClu & object[,logLname] < min(quiteLow1,quiteLow2)) ## may be all FALSE
   # }
-  ## version that overcome new problems in Rmixmod 2.1.0: we need one clustering to succeed.
-  # 1 cluster should always work, so nbCluster=1:2 even if only2 is interesting 
-  clu <- suppressWarnings(mixmodCluster(object[,logLname],nbCluster=1:2,strategy = mixmodStrategy(seed=123)))
-  if (clu@results[[2L]]@error=="No error") {
-    ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
-    ## and all lower and higher points form another => we risk losing the higer points !
-    ## => find the cluster of the lowest point
-    suspectClu <- clu@results[[2L]]@partition[which.min(object[,logLname])]
-    cluMeans <- clu@results[[2L]]@parameters@mean
-    suspectPts <- (clu@results[[2L]]@partition == suspectClu & object[,logLname] < min(quiteLow1,quiteLow2)) ## may be all FALSE
-  } else {
-    suspectPts <- which.min(object[,logLname])
-    suspectPts <- (seq(nrow(object))==suspectPts) ## not elegant, but consistent with alternative code
+  suspectPts <- try(.suspectPts_by_Rmixmod(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2)),silent=TRUE)
+  if (inherits(suspectPts,"try-error")) { ## if Rmixmod::mixmodCluster not accessible...
+    suspectPts <- .suspectPts_by_mclust(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2))
   }
   purgedlogLs <- object ## suspect points will be removed from the smoothing input but not from the return object's $logLs
   if (any(suspectPts)) {
@@ -81,7 +71,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   upper <- apply(object,2,max)[fittedPars] ## idem
   if (is.null(allFix)) { ## estimation
     stat.obs <- attr(object,"stat.obs")
-    if (verbose) cat(paste("\nusing",method,"to infer the S-likelihood surface...\n"))
+    if (verbose) cat(paste("\nUsing",method,"to infer the S-likelihood surface...\n"))
     if (method=="GCV") { ## the GCV rho estimates tend to be too low ?
       ## the effect of this GCV bias is over-smoothing, with phi not adjusted (since it comes from pure RMSE) 
       ## => overconfidence in precision of prediction; it may be better to have under confidence
@@ -103,17 +93,22 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
       init.corrHLfit <- list(rho=1/(upper-lower))
       dlogL <- max(purgedlogLs$logL)-purgedlogLs$logL
       maxdlogL <- max(dlogL)
-      priorweights <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
-      #priorweights <- NULL
+      # next line not consistent with spaMM's good practice as "prior.weights=priorweights" does not refer to a variable in the data
+      #priorweights <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL)
+      # Rather use
+      priorwName <- .makenewname("priorw",names(purgedlogLs)) ## name not already in the data
+      purgedlogLs[[priorwName]] <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
       if (eval(Infusion.getOption("fitmeCondition"))) {
         thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4), 
-                         method=method, init=init.corrHLfit,prior.weights=priorweights) 
+                         method=method, init=init.corrHLfit,prior.weights=eval(as.name(priorwName))) 
       } else thisfit <- corrHLfit(form,data=purgedlogLs,
                            ranFix=list(nu=4),init.HLfit=list(phi=init.phi),
                            HLmethod=method,
-                           init.corrHLfit=init.corrHLfit,prior.weights=priorweights) ## clean as one can expect
+                           init.corrHLfit=init.corrHLfit,prior.weights=eval(as.name(priorwName))) ## clean as one can expect
       RMSE <- sqrt(thisfit$phi)
-      ranfix <- c(thisfit$corrPars,list(lambda=thisfit$lambda,phi=thisfit$phi))
+      corrPars <- thisfit$corrPars[["1"]]
+      if (is.null(corrPars)) corrPars <- thisfit$corrPars ## F I X M E transitional code 
+      ranfix <- c(corrPars,list(lambda=thisfit$lambda,phi=thisfit$phi))
       ## it is worth fixing the fixed effects if all other params are fixed. Otherwise 
       ## extreme low response values in the 'object' affect the predictionCoeffs and create artificial "valleys" in the predictions
       ## (it might be better to refit lambda, except that we don't want extreme lambda...)  
@@ -173,4 +168,32 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   return(.Object)   
 } 
 
+## version that overcome new problems in Rmixmod 2.1.0: we need one clustering to succeed.
+# 1 cluster should always work, so nbCluster=1:2 even if only2 is interesting 
+.suspectPts_by_Rmixmod <- function(logls,threshold) {
+  clu <- suppressWarnings(.mixclustWrap("mixmodCluster",list(data=logls,nbCluster=1:2,seed=123) ))
+  if (clu@results[[2L]]@error=="No error") {
+    ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
+    ## and all lower and higher points form another => we risk losing the higer points !
+    ## => find the cluster of the lowest point
+    suspectClu <- clu@results[[2L]]@partition[which.min(logls)]
+    suspectPts <- (clu@results[[2L]]@partition == suspectClu & logls < threshold) ## may be all FALSE
+  } else {
+    suspectPts <- which.min(logls)
+    suspectPts <- (seq(length(logls))==suspectPts) ## not elegant, but consistent with alternative code
+  }
+}
+
+.suspectPts_by_mclust <- function(logls,threshold) {
+  if ("package:mclust" %in% search()) { ## don't assume it was previous attached if so olny in a child process...
+    clu <- .mixclustWrap("Mclust",
+                         list(data=logls,G=2,verbose=FALSE),
+                         pack="mclust")
+  } else  stop("'mclust' should be loaded first.")
+  ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
+  ## and all lower and higher points form another => we risk losing the higer points !
+  ## => find the cluster of the lowest point
+  suspectClu <- clu$classification[which.min(logls)]
+  suspectPts <- (clu$classification == suspectClu & logls < threshold) ## may be all FALSE
+}
 

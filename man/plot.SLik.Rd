@@ -57,7 +57,7 @@ or \code{variances} to \code{filled.mapMM}).
 \dontrun{
 ## Using 'slik' object from the example in help("Infusion-package") 
   plot(slik, filled=TRUE,
-       plot.title=quote(title("Summary likelihood ratio surface",
+       plot.title=quote(title("Summary-likelihood-ratio surface",
                               xlab=expression(mu),
                               ylab=expression(sigma^2))))
 }

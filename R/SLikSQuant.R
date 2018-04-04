@@ -34,7 +34,7 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
                              maxit=1,n=NULL,useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE),newsimuls=NULL,
                              useCI=TRUE,level=0.95,verbose=list(most=interactive(),movie=FALSE),
                              precision = Infusion.getOption("precision"),
-                             method, ## "GCV" and HLfit methods for Slik objects
+                             method, ## "GCV" and HLfit methods for Slik objects; mixmodCluster or... for SLik_j objects
                              ...) {
   if (!is.list(verbose)) verbose <- as.list(verbose)
   if (is.null(names(verbose))) names(verbose) <- c("most","movie")[seq_len(length(verbose))]
@@ -141,7 +141,9 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       surfaceData <- rbind(surfaceData,newlogLs)
       itmethod <- method[min(length(method),it+1L)] ## may be overriden below when hat(nu) is low.
       ## tests whether resmoothing can yield substantial improvements:
-      allFix <- c(object$fit$corrPars[c("nu","rho")],list(lambda=object$fit$lambda[1],phi=object$fit$phi[1],beta=fixef(object$fit)))
+      corrPars <- object$fit$corrPars[["1"]]
+      if (is.null(corrPars)) corrPars <- object$fit$corrPars ## F I X M E transitional code 
+      allFix <- c(corrPars[c("nu","rho")],list(lambda=object$fit$lambda[1],phi=object$fit$phi[1],beta=fixef(object$fit)))
       previousRho <- allFix$rho ## full length vector of scale params
       if (is.null(previousRho)) {
         stop("is.null(previousRho) in 'refine.default'. Check code (trRho?).")
@@ -179,7 +181,9 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       } else {
         object <- infer_surface(surfaceData,method=itmethod,verbose=verbose$most) ## new smoothing;could reuse corrpars 
         if (verbose$most) {
-          vranfix <- unlist(object$fit$corrPars[c("nu","rho")])
+          corrPars <- object$fit$corrPars[["1"]]
+          if (is.null(corrPars)) corrPars <- object$fit$corrPars ## F I X M E transitional code 
+          vranfix <- unlist(corrPars[c("nu","rho")])
           cat(paste(paste(paste(names(vranfix),"=",signif(vranfix)),collapse=", ")," (estimated by ",itmethod,")\n",sep=""))
         }
       }

@@ -12,6 +12,7 @@ Infer as (summary) likelihood surface from a simulation table
 infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"), 
                 Simulate = attr(data, "Simulate"), 
                 nbCluster= Infusion.getOption("nbCluster"),
+                using = Infusion.getOption("using"), 
                 verbose = list(most = interactive(), final = FALSE))
 }
 %- maybe also 'usage' for other objects documented here.
@@ -27,7 +28,9 @@ infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"),
 }
   \item{Simulate}{Either NULL or the name of the simulation function if it can be called from the R session. 
 }
-  \item{nbCluster}{\code{nbCluster} argument of \code{\link[Rmixmod]{mixmodCluster}} 
+  \item{nbCluster}{\code{nbCluster} argument of \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}
+}
+  \item{using}{Either \code{"Rmixmod"} or \code{"mclust"} to select the clustering methods used. 
 }
   \item{verbose}{
 A list as shown by the default, or simply a vector of booleans, indicating respectively
@@ -35,7 +38,8 @@ A list as shown by the default, or simply a vector of booleans, indicating respe
 }
 }
 \value{
-  An object of class \code{SLik_j}, which is a list including two \code{\link[Rmixmod]{mixmodCluster}} objects, and additional members not documented here.
+  An object of class \code{SLik_j}, which is a list including two \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
+  objects, and additional members not documented here.
 }
 \examples{
 if (Infusion.getOption("example_maxtime")>50) {

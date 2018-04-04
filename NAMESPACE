@@ -1,27 +1,23 @@
 exportPattern("^[[:alpha:]]+")
+importFrom("blackbox", "prepareData", "calcGCV", "blackbox.options", "isPointInCHull", "subHullWrapper",
+           "resetCHull", "blackbox.getOption", "as.surface", "init_grid", "volTriangulationWrapper", 
+           "locatePointinvT","volTriangulation","rvolTriangulation", "subsimplices.volTriangulation","rsimplex")
+importFrom("graphics", "abline", "axis", "curve", "filled.contour", "lines", "par", "plot", "points", "plot.new", "text", "title")
+importFrom("grDevices", "adjustcolor")
+importFrom("methods", "slot", "new")
+importFrom("mvtnorm", "dmvnorm", "rmvnorm")
+importFrom("numDeriv", "grad", "hessian", "jacobian")
+importFrom("pbapply", "pblapply", "pboptions")
+importFrom("proxy", "dist")
+#importFrom("Rmixmod", "mixmodCluster", "mixmodStrategy", "mixmodGaussianModel", "plotCluster")
 importFrom("spaMM", "corrHLfit", "MaternCorr", "mapMM", "fitme", "spaMM.colors", "fixef", "filled.mapMM", 
            "spaMM.filled.contour", "HLCor", "HLfit", "spaMMplot2D", "get_residVar") ## doc'ed fns
 importFrom("spaMM", "makeTicks") ## undoc fns
-importFrom(stats,profile,confint,rnorm)
-importFrom(proxy,dist,simil)
-#importFrom(geometry,delaunayn)
-importFrom(Matrix,rBind)
-importFrom(rcdd,d2q,q2d,scdd,lpcdd,qneg,qmatmult,qmq)
-importFrom(blackbox,prepareData,calcGCV,blackbox.options,addSimplexEq,isPointInCHull,redundant.addVeq,subHullWrapper,provideDevice)
-importFrom(blackbox,Hreprrational,resetCHull,blackbox.getOption,as.surface,init_grid,volTriangulationWrapper)
-importFrom("blackbox", "locatePointinvT","volTriangulation","rvolTriangulation",
-           "subsimplices.volTriangulation","rsimplex")
-importFrom(mvtnorm, dmvnorm, rmvnorm)
-importFrom("Rmixmod", "mixmodCluster", "mixmodStrategy", "mixmodGaussianModel", "plotCluster")
-importFrom("graphics", "abline", "axis", "curve", "filled.contour", "lines", "par", "plot", "points", "plot.new")
-importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", "predict", "qchisq", "runif", "uniroot")
-importFrom("stats", "binomial", "poisson", "constrOptim", "dchisq")
-importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar")
-importFrom("methods", "slot", "new")
-importFrom("numDeriv", "grad", "hessian", "jacobian")
-importFrom("graphics", "text", "title")
-importFrom("grDevices", "adjustcolor")
+importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", 
+           "predict", "qchisq", "runif", "uniroot", "binomial", "poisson", "constrOptim", "dchisq", "profile", "confint", "rnorm")
+importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar", "packageDescription")
 importFrom("viridis", "viridis")
+#importFrom("mclust", "Mclust", "densityMclust", "mclustBIC", "sim") ## mclustBIC bc Mclust() -> as.name("mclustBIC") but many more pop up...
 export(mapMM) ## from spaMM
 export(resetCHull,isPointInCHull) ## from blackbox
 export(init_grid) # from blackbox, needs to be doc'ed in Infusion itself as it is explicitly used in doc 
@@ -47,6 +43,7 @@ S3method(predict,SLik_j)
 S3method(predict,SLikp)
 S3method(predict,dMixmod)
 S3method(predict,MixmodResults)
+S3method(predict,dMclust)
 S3method(project,default)
 S3method(project,character)
 S3method(refine,SLik)

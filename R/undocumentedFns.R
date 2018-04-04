@@ -109,7 +109,9 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   fit <- do.call(corrHLfit,arglist)
   #if(verbose) cat("Smoothing the data, may be slow...\n")
   arglist$data <- data
-  ranfix <- c(fit$corrPars,list(lambda=fit$lambda))
+  corrPars <- fit$corrPars[["1"]]
+  if (is.null(corrPars)) corrPars <- fit$corrPars ## F I X M E transitional code 
+  ranfix <- c(corrPars,list(lambda=fit$lambda))
   arglist$ranFix <- ranfix
   arglist$`init.corrHLfit` <- NULL
   fit <- do.call(corrHLfit,arglist)
@@ -167,3 +169,18 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   return(list(CIs=CIs,bounds=bounds,missingBounds=missingBounds,level=level)) 
 }
 
+.makenewname <- function(base,varnames) { ## post CRAN 1.4.1
+  varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
+  allremainders <- substring(varnames,nchar(base)+1) 
+  allnumericremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
+  ## 2015/03/04
+  if (length(allremainders) == 0L && length(allnumericremainders) == 0L) { ## if base = allremainders => length(allnumericremainders) == 0 not sufficient
+    fvname <- base
+  } else {
+    if (length(allnumericremainders)) {
+      num <- max(allnumericremainders)+1L
+    } else num <- 1L
+    fvname <-paste ( base , num , sep="") 
+  }
+  fvname
+}

@@ -47,14 +47,9 @@ infer_logL_by_Hlscv.diag <- function(EDF,stat.obs,logLname,verbose) {
     logL <- logL/2
     isValid <- FALSE
   } else {
-    #if (verbose) cat(".")
-    if (requireNamespace("ks",quietly=TRUE)) {
-      Hmat <- ks::Hlscv.diag(locEDF) ## bandwidth estimation
-      fit <- ks::kde(locEDF,H=Hmat) ## smoothing
-    } else {
-      stop("ks package not available.")
-    }
-    logL <- log(predict(fit,x=stat.obs))    
+    Hmat <- .mixclustWrap("Hlscv.diag", list(x=locEDF), pack="ks")
+    fit <- .mixclustWrap("kde", list(x=locEDF,H=Hmat), pack="ks")
+    logL <- .mixclustWrap("predict", list(object=fit,x=stat.obs), pack="ks")
     isValid <- TRUE
   }
   names(logL) <- logLname
@@ -64,10 +59,11 @@ infer_logL_by_Hlscv.diag <- function(EDF,stat.obs,logLname,verbose) {
 infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
   stats <- names(stat.obs)
   locEDF <- EDF[,stats,drop=FALSE] 
-  if (requireNamespace("mclust",quietly=TRUE)) {
-    fit <- mclust::densityMclust(locEDF)
+  if ("package:mclust" %in% search()) { ## don't assume it was previous attached if so olny in a child process...
+     ##requireNamespace + nclust:: not enough  given calls 
+    fit <- .densityMclust(locEDF,stat.obs=stat.obs) ## handling boundary effects, != mclust::densityMclust
   } else {
-    stop("mclust package not available.")
+    stop("'mclust' should be loaded first.")
   }
   pred <- predict(fit,t(c(stat.obs))) ## pas de binFactor!
   logL <- log(pred)
@@ -82,6 +78,10 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
 infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   stats <- names(stat.obs)
   locEDF <- EDF[,stats,drop=FALSE] 
+  XtX <- crossprod(locEDF)
+  if (is.infinite(kappa(XtX))) {
+    warning("The summary statistics are collinear. Clustering will likely fail. Remove some summary statistic(s).")
+  }
   fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod
   if (length(fit@nbCluster)==0L) { ## likely degenerate distribution
     checkfix <- apply(locEDF,2,var)==0
@@ -111,7 +111,7 @@ infer_logLs <- function(object,
                         logLname=Infusion.getOption("logLname"), 
                         verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                      final=FALSE),  
-                        method="infer_logL_by_Rmixmod",
+                        method=Infusion.getOption("infer_logL_method"),
                         nb_cores=NULL,
                         packages=NULL,
 #                        fittedPars=NULL,
@@ -121,20 +121,29 @@ infer_logLs <- function(object,
     message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame.")
     names(stat.obs) <- cn ## minimal patch so that names() can be used, not colnames()
   }
-  if (!is.list(verbose)) verbose <-as.list(verbose)
+  if (!is.list(verbose)) verbose <- as.list(verbose)
   if (is.null(names(verbose))) names(verbose) <- c("most","final")[seq_len(length(verbose))]
   if (is.null(verbose$most)) verbose$most <- interactive()
   if (is.null(verbose$final)) verbose$final <- FALSE
   allPars <- names(attr(object[[1]],"par"))
   object <- .check_logLs_input(object)
+
+  nb_cores <- .check_nb_cores(nb_cores=nb_cores)
+  if (nb_cores > 1L) {
+    cl <- parallel::makeCluster(nb_cores) 
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    dotenv <- list2env(list(...))
+    parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) 
+  } else cl <- NULL
   
-  cores_info <- .init_cores(nb_cores=nb_cores)
   Sobs.densities <- vector("list", length(object)) #matrix(NA,nrow=NROW(parGrid),ncol=4L) ## FR: doit être pré- déclarée, si j'en crois mon code...
   method_arglist <- list(stat.obs=stat.obs,logLname=logLname,verbose=verbose)
   # make sure that a user-defined nondefault method is converted to a string: 
-  if ( ! is.null(cores_info$cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
-  Sobs.densities <- .run_cores(method, object, cores_info, stat.obs=stat.obs,packages=packages,logLname=logLname,verbose=verbose)
-  if ( cores_info$nb_cores > 1L) parallel::stopCluster(cores_info$cl)
+  if ( ! is.null(cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
+  if (method=="infer_logL_by_mclust") packages <- c(packages,"mclust")
+  if (method=="infer_logL_by_Rmixmod") packages <- c(packages,"Rmixmod") ## did not appear necessary...
+  Sobs.densities <- .run_cores(method, object, cl, stat.obs=stat.obs,packages=packages,logLname=logLname,verbose=verbose)
+  if ( nb_cores > 1L) parallel::stopCluster(cl)
   
   Sobs.densities <- do.call(rbind,Sobs.densities)  
   Sobs.densities <- data.frame(Sobs.densities[,c(allPars,logLname,"isValid"),drop=FALSE])

@@ -5,6 +5,7 @@
 \alias{calc.lrthreshold.SLik}
 \alias{calc.lrthreshold.SLikp}
 \alias{predict.dMixmod}
+\alias{predict.dMclust}
 \alias{predict.SLik}
 \alias{predict.SLik_j}
 \alias{predict.MixmodResults}

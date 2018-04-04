@@ -29,7 +29,7 @@
     #color.palette <- function(n){spaMM.colors(n,redshift=3)}
     color.palette <- function(n){adjustcolor(.viridisOpts(n,bias=2),offset = c(0.5, 0.5, 0.3, 0))}
   }
-  spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main="Summary likelihood ratio surface",
+  spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main="Summary-likelihood-ratio surface",
                        color.palette= color.palette,nlevels=50,
                        plot.axes=eval(plot.axes)
   )
@@ -67,7 +67,7 @@ plot.SLik_j <-function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
       xy <- object$logLs[,fittedPars]
       spaMMplot2D(x=xy[,1],y=xy[,2],z=Ztransf(predict(object,newdata=xy)),
                   color.palette=function(n){spaMM.colors(50,redshift=3)},nlevels=50,
-                  plot.title=title(main="Summary likelihood ratio surface",
+                  plot.title=title(main="Summary-likelihood-ratio surface",
                                          xlab=fittedPars[1],ylab=fittedPars[2]),
                   decorations=decos,
                   ...)

@@ -20,10 +20,10 @@ add_reftable(...)
 A list of simulations
 }
   \item{Simulate}{
-The name (as a character string) of the function used to generate empirical distributions of summary statistics. The function must have a single vector as argument, matching rows of \code{par.grid}, and must return a vector of summary statistics with named vector members.
+The name (as a character string) of the *R* function used to generate empirical distributions of summary statistics (notably, an for external simulation program, an R function wrapping the call to the external program must be provided). The function must have a single vector as argument, matching each row of \code{par.grid}, and must return a vector of summary statistics with named vector members.
 }
   \item{par.grid}{
- A data frame which each line matches the single vector argument of \code{Simulate}
+ A data frame of which each line matches the single vector argument of \code{Simulate}.
 }
   \item{nRealizations}{
   The number of simulated samples of summary statistics, for each empirical distribution (each row of \code{par.grid}). If the argument is NULL, the value is obtained by \code{Infusion.getOption}. If the argument is not NULL, \code{Infusion.options(nRealizations)} is set, but restored, on exit from \code{add_simulation}, to its initial value.

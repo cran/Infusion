@@ -84,7 +84,7 @@ further arguments passed to or from other methods (currently not used).
   
   If \code{method="GCV"}, a generalized cross-validation procedure (Golub et al. 1979) is used to estimate the smoothing parameters. This is faster but still slow, so a random subset of size \code{knotnbr} is still used to estimate the smoothing parameters and generate the predictor.
   
-  Alternatively, various machine-learning methods can be used (see e.g. Hastie et al., 2009,  for an introduction). A random subset of size \code{knotnbr} is again used, with a larger default value bearing the assumption that these methods are faster. \code{method="neuralNet"} interfaces a neural network method. It calls the \code{\link[caret]{train}} function from the \code{caret} package.
+  Alternatively, various machine-learning methods can be used (see e.g. Hastie et al., 2009,  for an introduction). A random subset of size \code{knotnbr} is again used, with a larger default value bearing the assumption that these methods are faster. \code{method="neuralNet"} interfaces a neural network method. It calls the \code{train} function from the \code{caret} package.
   
   In principle, any object suitable for prediction could be used as one of the \code{projectors}. 
   That is, if predictions of a parameter can be performed using an object \code{MyProjector} of class \code{MyProjectorClass}, 

@@ -16,6 +16,7 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
                             logLname=Infusion.getOption("logLname"), ## not immed useful
                             Simulate=attr(data,"Simulate"), ## may be NULL
                             nbCluster=Infusion.getOption("nbCluster"),
+                            using=Infusion.getOption("using"),
                             verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                          final=FALSE)  
 ) {
@@ -40,37 +41,82 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
   rownames(fixedPars) <- NULL## avoids warning on rownames when later used in cbind()
   if (! is.list(nbCluster)) nbCluster <- list(jointdens=nbCluster, pardens=nbCluster)
   nbCluster <- lapply(nbCluster,eval.parent)
-  models <- mixmodGaussianModel(listModels=Infusion.getOption("mixmodGaussianModel"))
-  if (verbose$most) cat(paste("Densities modeling:",nrow(data),"points;\n"))
-  locarglist <- list(data=data[,c(fittedPars,statNames)],nbCluster=nbCluster$jointdens, 
-                     strategy = mixmodStrategy(seed=123), models=models)
-  jointdens <- try(do.call("mixmodCluster",locarglist),silent = TRUE)
-  if (inherits(jointdens,"try-error")) {
-    locarglist$nbCluster <- eval(Infusion.getOption("nbCluster"))
-    jointdens <- do.call("mixmodCluster",locarglist)
-  } 
-  if (length(nbCluster)==1L) {
-    jointdens <- jointdens@results[[1L]]
-  } else { jointdens <- .get_best_clu_by_AIC(jointdens) }
-  if (verbose$most) cat(paste(" joint density modeling:",jointdens@nbCluster,"clusters;\n"))
-  locarglist <- list(data=data[,fittedPars,drop=FALSE], nbCluster=nbCluster$pardens, 
-                     strategy = mixmodStrategy(seed=123), models=models)
-  pardens <- try(do.call("mixmodCluster",locarglist),silent = TRUE)
-  if (inherits(pardens,"try-error")) {
-    locarglist$nbCluster <- eval(Infusion.getOption("nbCluster"))
-    pardens <- do.call("mixmodCluster",locarglist)
-  }                               
-  if (length(nbCluster)==1L) {
-    pardens <- pardens@results[[1L]]
-  } else { pardens <- .get_best_clu_by_AIC(pardens) }
-  if (verbose$most) cat(paste(" parameter modeling:",pardens@nbCluster,"clusters.\n"))
-  #plotCluster(pardens,data=data[,fittedPars]) to plot @results[[1L]]
-  # Rmixmod::plot(<mixmodCluster object>) ith Rmixmod:: to plot from any envir, not only the global one
-  resu <- list(jointdens=jointdens,pardens=pardens)
-  resu$solve_t_chol_sigma_lists <- list(
-    pardens=lapply(resu$pardens@parameters["variance"], function(mat) solve(t(chol(mat)))),
-    jointdens=lapply(resu$jointdens@parameters["variance"], function(mat) solve(t(chol(mat))))
-  ) 
+  if (using=="mclust") {
+    if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
+    if (verbose$most) cat(paste("Densities modeling:",nrow(data),"points;\n"))
+    
+    if (length(nbCluster$jointdens)==1L) {
+      jointdens <- .mixclustWrap("densityMclust",
+                                 list(data=data[,c(fittedPars,statNames)],modelNames=Infusion.getOption("mclustModel"), 
+                                      G=nbCluster$jointdens,verbose=FALSE),
+                                 pack="mclust")
+    } else { 
+      models <- vector("list",length(nbCluster$jointdens))
+      for (it in seq_along(nbCluster$jointdens)) {
+        models[[it]] <- .mixclustWrap("densityMclust",
+                                      list(data=data[,c(fittedPars,statNames)],modelNames=Infusion.getOption("mclustModel"), 
+                                           G=nbCluster$jointdens[it],verbose=FALSE),
+                                      pack="mclust")
+      }
+      jointdens <- .get_best_mclust_by_AIC(models) 
+    }
+    if (verbose$most) cat(paste(" joint density modeling:",jointdens$G,"clusters;\n"))
+    if (length(nbCluster$pardens)==1L) {
+      pardens <- .mixclustWrap("densityMclust",
+                               list(data=data[,fittedPars,drop=FALSE],modelNames=Infusion.getOption("mclustModel"), G=nbCluster$pardens,verbose=FALSE),
+                               pack="mclust")
+    } else { 
+      models <- vector("list",length(nbCluster$pardens))
+      for (it in seq_along(nbCluster$pardens)) {
+        models[[it]] <- .mixclustWrap("densityMclust",
+                                      list(data=data[,fittedPars,drop=FALSE],modelNames=Infusion.getOption("mclustModel"), 
+                                           G=nbCluster$pardens[it], verbose=FALSE),
+                                      pack="mclust")
+      }
+      pardens <- .get_best_mclust_by_AIC(models) 
+    }
+    if (verbose$most) cat(paste(" parameter modeling:",pardens$G,"clusters.\n"))
+    resu <- list(jointdens=jointdens,pardens=pardens)
+    # pdl <- vector("list", pardens$G)
+    # sigma <- resu$pardens$parameters$variance$sigma
+    # for (it in seq_len(pardens$G)) pdl[[it]] <- solve(t(chol(sigma[,,it])))
+    # jdl <- vector("list", jointdens$G)
+    # sigma <- resu$jointdens$parameters$variance$sigma
+    # for (it in seq_len(jointdens$G)) jdl[[it]] <- solve(t(chol(sigma[,,it])))
+    # resu$solve_t_chol_sigma_lists <- list(pardens=pdl, jointdens=jdl) 
+  } else {
+    models <- .mixclustWrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel")))
+    if (verbose$most) cat(paste("Densities modeling:",nrow(data),"points;\n"))
+    locarglist <- list(data=data[,c(fittedPars,statNames)],nbCluster=nbCluster$jointdens, 
+                       seed=123 , models=models)
+    jointdens <- try(.mixclustWrap("mixmodCluster",locarglist),silent = TRUE)
+    if (inherits(jointdens,"try-error")) {
+      locarglist$nbCluster <- eval(Infusion.getOption("nbCluster"))
+      jointdens <- do.call("mixmodCluster",locarglist)
+    } 
+    if (length(nbCluster)==1L) {
+      jointdens <- jointdens@results[[1L]]
+    } else { jointdens <- .get_best_clu_by_AIC(jointdens) }
+    if (verbose$most) cat(paste(" joint density modeling:",jointdens@nbCluster,"clusters;\n"))
+    locarglist <- list(data=data[,fittedPars,drop=FALSE], nbCluster=nbCluster$pardens, 
+                       seed=123 , models=models)
+    pardens <- try(.mixclustWrap("mixmodCluster",locarglist),silent = TRUE)
+    if (inherits(pardens,"try-error")) {
+      locarglist$nbCluster <- eval(Infusion.getOption("nbCluster"))
+      pardens <- do.call("mixmodCluster",locarglist)
+    }                               
+    if (length(nbCluster)==1L) {
+      pardens <- pardens@results[[1L]]
+    } else { pardens <- .get_best_clu_by_AIC(pardens) }
+    if (verbose$most) cat(paste(" parameter modeling:",pardens@nbCluster,"clusters.\n"))
+    #plotCluster(pardens,data=data[,fittedPars]) to plot @results[[1L]]
+    # Rmixmod::plot(<mixmodCluster object>) ith Rmixmod:: to plot from any envir, not only the global one
+    resu <- list(jointdens=jointdens,pardens=pardens)
+    resu$solve_t_chol_sigma_lists <- list(
+      pardens=lapply(resu$pardens@parameters["variance"], function(mat) solve(t(chol(mat)))),
+      jointdens=lapply(resu$jointdens@parameters["variance"], function(mat) solve(t(chol(mat))))
+    ) 
+  }
   attr(resu,"EDFstat") <- "[see this string in infer_SLik_joint]" ## 
   resu$logLs <- structure(data,stat.obs=stat.obs,Simulate=Simulate) ## as in infer_surface.logLs
   # attr(resu,"callfn") <- "infer_SLik_joint"
@@ -131,6 +177,33 @@ predict.MixmodResults <- function (object, newdata,log=TRUE, solve_t_chol_sigma_
   return(mixture)
 }
 
+.pointpredict.Rmixmod <- function(point,object,tstat.obs,log,which,...)  {
+  if (which!="parvaldens") jointvaldens <- predict(object$jointdens,
+                                                   newdata=cbind(t(point),tstat.obs),
+                                                   solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$jointdens,
+                                                   log=log,...)
+  if (which=="jointvaldens") return(jointvaldens)
+  parvaldens <- predict(object$pardens,newdata=point,
+                        solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$pardens,
+                        log=log,...) 
+  if (which=="parvaldens") return(parvaldens)
+  if (log) {
+    condvaldens <- jointvaldens - parvaldens
+  } else condvaldens <- jointvaldens/parvaldens
+  return(condvaldens)
+}
+
+.predict_SLik_j_mclust <- function(object, newdata, tstat.obs, log, which)  {
+  if (which!="parvaldens") jointvaldens <- predict(object$jointdens, newdata=cbind(data.frame(newdata),tstat.obs))
+  if (which=="jointvaldens") return(jointvaldens)
+  parvaldens <- predict(object$pardens,newdata=newdata) 
+  if (which=="parvaldens") return(parvaldens)
+  if (log) {
+    condvaldens <- log(jointvaldens) - log(parvaldens)
+  } else condvaldens <- jointvaldens/parvaldens
+  return(condvaldens)
+}
+
 predict.SLik_j <- function (object, 
                             newdata, ## requests new fittedPars values! 
                             # newdata=object$logLs[,object$colTypes$fittedPars,drop=FALSE], 
@@ -142,22 +215,11 @@ predict.SLik_j <- function (object,
   tstat.obs <- t(attr(object$logLs,"stat.obs")) ## FR->FR rethink this for all classes of objects
   # not useful bc predict.MixmodResults does not handle it:
   #newdata <- cbind(newdata, t(replicate(nrow(newdata),attr(object$logLs,"stat.obs"))))
-  pointpredict <- function(point)  {
-    if (which!="parvaldens") jointvaldens <- predict(object$jointdens,
-                                                     newdata=cbind(t(point),tstat.obs),
-                                                     solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$jointdens,
-                                                     log=log,...)
-    if (which=="jointvaldens") return(jointvaldens)
-    parvaldens <- predict(object$pardens,newdata=point,
-                          solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$pardens,
-                          log=log,...) 
-    if (which=="parvaldens") return(parvaldens)
-    if (log) {
-      condvaldens <- jointvaldens - parvaldens
-    } else condvaldens <- jointvaldens/parvaldens
-    return(condvaldens)
+  if (inherits(object$jointdens,"densityMclust")) {
+    .predict_SLik_j_mclust(object=object, newdata=newdata, tstat.obs=tstat.obs, log=log, which=which)
+  } else {
+    apply(newdata,1L, .pointpredict.Rmixmod, object=object, tstat.obs=tstat.obs, log=log, which=which)
   }
-  apply(newdata,1L,pointpredict)
 }
 
 confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is sought 
@@ -169,7 +231,7 @@ confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is so
 }
 
 refine.SLik_j <- function(object,method=NULL,...) {
-  if (is.null(method)) method <- "mixmodCluster"
+  if (is.null(method)) method <- "mixmodCluster" ## no clear effect but distinct from SLik case
   refine.default(object, surfaceData=object$logLs, method=method, ...)
 }
 
@@ -181,8 +243,13 @@ print.SLik_j <-function(x,...) {summary.SLik_j(x,...)}
   size <- attr(object$logLs,"n_first_iter")
   if (is.null(size)) size <- length(which(object$logLs$cumul_iter==1)) ## FR->FR temporary back compat
   if ( ! is.null(freq_good <- attr(object$logLs,"freq_good"))) size <- ceiling(size/freq_good)
-  trypoints <- .simulate.MixmodResults(object$jointdens, nsim=1L, size=size) ## simulates joint
-  trypoints <- trypoints[,seq_len(length(fittedPars)),drop=FALSE] ##  marginal=current distr of param
+  if (inherits(object$jointdens,"densityMclust")) {
+    trypoints <- do.call("sim", c(object$jointdens[c("modelName", "parameters")],list(n=size)))
+    trypoints <- trypoints[,1L+seq_len(length(fittedPars)),drop=FALSE]
+  } else {
+    trypoints <- .simulate.MixmodResults(object$jointdens, nsim=1L, size=size) ## simulates joint
+    trypoints <- trypoints[,seq_len(length(fittedPars)),drop=FALSE]
+  } ##  marginal=current distr of param
   colnames(trypoints) <- fittedPars
   prior <- predict(object,trypoints,which="parvaldens") ## slow
   logLs <- predict(object,trypoints) ## slow
@@ -284,7 +351,16 @@ profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no nee
 
 .boot.SLik_j <- function(object,nsim=2L,verbose = TRUE) {
   if (nsim<2L) stop("'slik' must be > 1")
-  bootrepls <- .simulate.MixmodResults(object$jointdens, nsim=nsim, size=nrow(object$logLs))
+  if (inherits(object$jointdens,"densityMclust")) {
+    bootrepls <- replicate(2L, do.call("sim", c(object$jointdens[c("modelName", "parameters")],list(n=nrow(object$logLs))))[,-1L],simplify=FALSE)
+    nbCluster <- list(jointdens=object$jointdens$G,
+                      pardens=object$pardens$G)
+  } else {
+    bootrepls <- .simulate.MixmodResults(object$jointdens, nsim=nsim, size=nrow(object$logLs))
+    nbCluster <- list(jointdens=object$jointdens@nbCluster,
+                      pardens=object$pardens@nbCluster)
+  } ##  marginal=current distr of param
+  
   boo <- object$logLs[,with(object$colTypes,c(fittedPars,statNames))]
   it <- 0L
   prevmsglength <- 0L
@@ -294,8 +370,7 @@ profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no nee
     if (verbose) {prevmsglength <<- .overcat(locmess,prevmsglength = prevmsglength)}
     boo[] <- simul
     densv <- infer_SLik_joint(boo,stat.obs=attr(object$logLs,"stat.obs"),
-                              nbCluster=list(jointdens=object$jointdens@nbCluster,
-                                             pardens=object$pardens@nbCluster),
+                              nbCluster=nbCluster,
                               verbose=list(most=FALSE,final=FALSE))
     return(densv)
   }
@@ -333,6 +408,6 @@ profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no nee
 #   signature=c("Mixmod"),
 # dans les sources pour savoir ce que Rmixmod fait.
 # cf also plotCluster(lik_j$jointdens,data=slik_j$logLs)
-.plotClusters <- function(object,which,...) {
-  plotCluster(object[[which]],data=object$logLs,...)
-}
+# .plotClusters <- function(object,which,...) {
+#   plotCluster(object[[which]],data=object$logLs,...)
+#}

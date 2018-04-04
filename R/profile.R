@@ -4,8 +4,11 @@
                                LRthreshold= - qchisq(0.999,df=1)/2, 
                                nRealizations=1000,
                                nbCluster= quote(seq(ceiling(nrow(data)^0.3))), # M O D I F Y doc if this is modified !
-                               #nbCluster= quote(ceiling(nrow(data)^0.3)), 
-                               mixmodGaussianModel="Gaussian_pk_Lk_Dk_A_Dk",
+                               using="Rmixmod", ## or ""mclust
+                               infer_logL_method="infer_logL_by_Rmixmod", # infer_logL_by_mclust,
+                               #infer_logL_method="infer_logL_by_mclust", ## string for clusterExport !
+                               mixmodGaussianModel="Gaussian_pk_Lk_Dk_A_Dk", ## shape is constant but volume and orientation are free
+                               mclustModel="VEV", ## equivalent to default mixmodGaussianModel
                                precision=0.1,
                                projTrainingSize=200,
                                projKnotNbr=300,
@@ -14,7 +17,6 @@
                                cores_avail_warned=FALSE,
                                nb_cores_warned=FALSE,
                                nb_cores=NULL,
-                               doSNOW_warned=FALSE,
                                ## undocumented
                                binningExponent=0.5,
                                zeromargin=0.1,
