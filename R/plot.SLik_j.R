@@ -72,6 +72,6 @@ plot.SLik_j <-function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
                   decorations=decos,
                   ...)
     }
-  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette)}
+  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
   invisible(object)
 }

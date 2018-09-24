@@ -53,18 +53,22 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   #   cluMeans <- clu@results[[1L]]@parameters@mean
   #   suspectPts <- (clu@results[[1L]]@partition == suspectClu & object[,logLname] < min(quiteLow1,quiteLow2)) ## may be all FALSE
   # }
-  suspectPts <- try(.suspectPts_by_Rmixmod(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2)),silent=TRUE)
-  if (inherits(suspectPts,"try-error")) { ## if Rmixmod::mixmodCluster not accessible...
-    suspectPts <- .suspectPts_by_mclust(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2))
-  }
   purgedlogLs <- object ## suspect points will be removed from the smoothing input but not from the return object's $logLs
-  if (any(suspectPts)) {
-    minGood <- min(purgedlogLs[ ! suspectPts,logLname])
-    quiteLow <- minGood - min(1e-4,(minGood-max(purgedlogLs[suspectPts,logLname]))/1000) 
-    purgedlogLs[suspectPts,logLname] <- NA ## tags them for matching and removal
-    purgedlogLs <- .remove.pairswithNas(purgedlogLs) ## *removes pairs* where any member is NA   
-    purgedlogLs <- purgedlogLs[ ! is.na(purgedlogLs[,logLname]),,drop=FALSE] ## removes *remaining NA's* not from pairs
-  }  
+  if (identical(Infusion.getOption("ESSAI"),TRUE)) {
+    purgedlogLs[,logLname] <- pmax(purgedlogLs[,logLname],quiteLow2) - log(1-pmin(purgedlogLs[,logLname]-quiteLow2,0))
+  } else {
+    suspectPts <- try(.suspectPts_by_Rmixmod(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2)),silent=TRUE)
+    if (inherits(suspectPts,"try-error")) { ## if Rmixmod::mixmodCluster not accessible...
+      suspectPts <- .suspectPts_by_mclust(logls=object[,logLname], threshold = min(quiteLow1,quiteLow2))
+    }
+    if (any(suspectPts)) {
+      minGood <- min(purgedlogLs[ ! suspectPts,logLname])
+      quiteLow <- minGood - min(1e-4,(minGood-max(purgedlogLs[suspectPts,logLname]))/1000) 
+      purgedlogLs[suspectPts,logLname] <- NA ## tags them for matching and removal
+      purgedlogLs <- .remove.pairswithNas(purgedlogLs) ## *removes pairs* where any member is NA   
+      purgedlogLs <- purgedlogLs[ ! is.na(purgedlogLs[,logLname]),,drop=FALSE] ## removes *remaining NA's* not from pairs
+    }  
+  }
   #
   form <- as.formula(paste(logLname,"~ 1 + Matern(1|",paste(fittedPars,collapse=" + "),")"))
   lower <- apply(object,2,min)[fittedPars] ## this should be that of the full object as in the return $lower 
@@ -85,30 +89,37 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
       ranfix <- c(ranfix,list(lambda=thisfit$lambda,phi=thisfit$phi))  
       etafix <- list(beta=fixef(thisfit))
     } else { ## handles all HLfit methods
-      purgedlogLs$uli <- as.factor(.ULI(purgedlogLs[,fittedPars])) 
-      init.phi.form <- as.formula(paste(logLname,"~ uli"))
-      ## FR->FR palliatif a probleme de spaMM init values
-      resglm <- glm(init.phi.form,data=purgedlogLs)
-      init.phi <- as.numeric(deviance(resglm)/resglm$df.residual)
       init.corrHLfit <- list(rho=1/(upper-lower))
-      dlogL <- max(purgedlogLs$logL)-purgedlogLs$logL
-      maxdlogL <- max(dlogL)
-      # next line not consistent with spaMM's good practice as "prior.weights=priorweights" does not refer to a variable in the data
-      #priorweights <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL)
-      # Rather use
-      priorwName <- .makenewname("priorw",names(purgedlogLs)) ## name not already in the data
-      purgedlogLs[[priorwName]] <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
-      if (eval(Infusion.getOption("fitmeCondition"))) {
-        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4), 
-                         method=method, init=init.corrHLfit,prior.weights=eval(as.name(priorwName))) 
-      } else thisfit <- corrHLfit(form,data=purgedlogLs,
-                           ranFix=list(nu=4),init.HLfit=list(phi=init.phi),
-                           HLmethod=method,
-                           init.corrHLfit=init.corrHLfit,prior.weights=eval(as.name(priorwName))) ## clean as one can expect
+      if (identical(Infusion.getOption("ESSAI"),TRUE)) {
+        if (eval(Infusion.getOption("fitmeCondition"))) {
+          thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4),method=method, init=init.corrHLfit) 
+        } else thisfit <- corrHLfit(form,data=purgedlogLs, ranFix=list(nu=4),
+                                    HLmethod=method, init.corrHLfit=init.corrHLfit)
+        # le code alternatif devrait marcher mais est complique et fragile
+      } else {
+        ## uses prior weights to reduce influence of extreme points but the prior weight computation is fragile.
+        purgedlogLs$uli <- as.factor(.ULI(purgedlogLs[,fittedPars])) 
+        init.phi.form <- as.formula(paste(logLname,"~ uli"))
+        ## FR->FR palliatif a probleme de spaMM init values
+        resglm <- glm(init.phi.form,data=purgedlogLs)
+        init.phi <- as.numeric(deviance(resglm)/resglm$df.residual)
+        init.phi <- min(9.99e7,max(1.01e-6,init.phi)) ## avoids extreme prior weights, but is ugly (F I X M E? here or in spaMM?)
+        dlogL <- max(purgedlogLs$logL)-purgedlogLs$logL
+        maxdlogL <- max(dlogL)
+        priorwName <- .makenewname("priorw",names(purgedlogLs)) ## name not already in the data
+        purgedlogLs[[priorwName]] <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
+        # then build a string without "priorwName" in it (but the value of priorwName) (2) convert to expression by parse() (3) eval
+        if (eval(Infusion.getOption("fitmeCondition"))) {
+          thisfit <- eval(parse(text=paste("fitme(form,data=purgedlogLs, fixed=list(nu=4),", 
+                                           "method=method, init=init.corrHLfit,prior.weights=",priorwName,")"))) 
+        } else thisfit <- eval(parse(text=paste("corrHLfit(form,data=purgedlogLs, ranFix=list(nu=4),init.HLfit=list(phi=init.phi),", 
+                                                "HLmethod=method, init.corrHLfit=init.corrHLfit,prior.weights=",priorwName,")")))
+      }
       RMSE <- sqrt(thisfit$phi)
-      corrPars <- thisfit$corrPars[["1"]]
-      if (is.null(corrPars)) corrPars <- thisfit$corrPars ## F I X M E transitional code 
-      ranfix <- c(corrPars,list(lambda=thisfit$lambda,phi=thisfit$phi))
+      if (thisfit$spaMM.version<"2.4.26") {
+        corrPars1 <- thisfit$corrPars[["1"]]
+      } else corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
+      ranfix <- c(corrPars1,list(lambda=thisfit$lambda,phi=thisfit$phi))
       ## it is worth fixing the fixed effects if all other params are fixed. Otherwise 
       ## extreme low response values in the 'object' affect the predictionCoeffs and create artificial "valleys" in the predictions
       ## (it might be better to refit lambda, except that we don't want extreme lambda...)  
@@ -151,7 +162,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   .Object$LOWER <- attr(object,"LOWER")
   .Object$UPPER <- attr(object,"UPPER")
   # thisfit$predictionCoeffs <- predictionCoeffs(thisfit)
-  .Object$logLs <- object ## (fittedPars,logL) and attributes (stat.obs) Simulate !
+  .Object$logLs <- object ## (fittedPars,logL) and attributes (stat.obs) Simulate packages env!
   obspred <- predict(thisfit,variances=list(linPred=TRUE,dispVar=TRUE),binding=logLname)
   .Object$obspred <- obspred
   # Qmax
@@ -185,11 +196,11 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 }
 
 .suspectPts_by_mclust <- function(logls,threshold) {
-  if ("package:mclust" %in% search()) { ## don't assume it was previous attached if so olny in a child process...
+  if ("package:mclust" %in% search()) { 
     clu <- .mixclustWrap("Mclust",
                          list(data=logls,G=2,verbose=FALSE),
                          pack="mclust")
-  } else  stop("'mclust' should be loaded first.")
+  } else  stop("'mclust' should be loaded first.") ## occurs if only loaded in a child process...
   ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
   ## and all lower and higher points form another => we risk losing the higer points !
   ## => find the cluster of the lowest point

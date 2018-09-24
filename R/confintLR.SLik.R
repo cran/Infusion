@@ -117,7 +117,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
                                                        MLval), f.lower = flower, f.upper = fupper,tol=tol))$root, 
                     TRUE)
       } else if (verbose) {
-        mess <- "Lower CI bound cannot be computed as it appears to exceed the 'fitted' parameter range."
+        mess <- paste0("Lower CI bound for ",parm," cannot be computed as it appears to exceed the 'fitted' parameter range.")
         print(mess,quote=FALSE)
       }
     }
@@ -153,7 +153,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
                              f.lower = flower, f.upper = fupper,tol=tol))$root, 
                     TRUE)
       } else if (verbose) {
-        mess <- "Upper CI bound cannot be computed as it appears to exceed the 'fitted' parameter range."
+        mess <- paste0("Upper CI bound for ",parm," cannot be computed as it appears to exceed the 'fitted' parameter range.")
         print(mess,quote=FALSE)
       }
     }

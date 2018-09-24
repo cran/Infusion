@@ -117,8 +117,12 @@ infer_logLs <- function(object,
 #                        fittedPars=NULL,
                         ... ## required because if generic includes them...
 ) {
+  if (is.data.frame(object)) {
+    stop(paste("'object' is a data.frame, not a list of matrices.\n Did you mean to call infer_Slik_joint() rather than infer_logLs() ?"))
+  }
   if ( ! is.null( cn <- colnames(stat.obs))) {
-    message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame.")
+    message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame. Converting...")
+    stat.obs <- drop(stat.obs)
     names(stat.obs) <- cn ## minimal patch so that names() can be used, not colnames()
   }
   if (!is.list(verbose)) verbose <- as.list(verbose)
@@ -127,24 +131,17 @@ infer_logLs <- function(object,
   if (is.null(verbose$final)) verbose$final <- FALSE
   allPars <- names(attr(object[[1]],"par"))
   object <- .check_logLs_input(object)
-
-  nb_cores <- .check_nb_cores(nb_cores=nb_cores)
-  if (nb_cores > 1L) {
-    cl <- parallel::makeCluster(nb_cores) 
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    dotenv <- list2env(list(...))
-    parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) 
-  } else cl <- NULL
-  
   Sobs.densities <- vector("list", length(object)) #matrix(NA,nrow=NROW(parGrid),ncol=4L) ## FR: doit être pré- déclarée, si j'en crois mon code...
   method_arglist <- list(stat.obs=stat.obs,logLname=logLname,verbose=verbose)
+  #
+  cores_info <- .init_cores(nb_cores, ...)
   # make sure that a user-defined nondefault method is converted to a string: 
-  if ( ! is.null(cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
+  if ( ! is.null(cores_info$cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
   if (method=="infer_logL_by_mclust") packages <- c(packages,"mclust")
   if (method=="infer_logL_by_Rmixmod") packages <- c(packages,"Rmixmod") ## did not appear necessary...
-  Sobs.densities <- .run_cores(method, object, cl, stat.obs=stat.obs,packages=packages,logLname=logLname,verbose=verbose)
-  if ( nb_cores > 1L) parallel::stopCluster(cl)
-  
+  Sobs.densities <- .eval_Sobs_densities(method, object, cores_info, stat.obs=stat.obs,packages=packages,logLname=logLname,verbose=verbose)
+  .close_cores(cores_info)
+  #
   Sobs.densities <- do.call(rbind,Sobs.densities)  
   Sobs.densities <- data.frame(Sobs.densities[,c(allPars,logLname,"isValid"),drop=FALSE])
   if (nrow(Sobs.densities)==0L) {
@@ -154,6 +151,8 @@ infer_logLs <- function(object,
   attr(Sobs.densities,"EDFstat") <- method ## 
   attr(Sobs.densities,"stat.obs") <- stat.obs
   attr(Sobs.densities,"Simulate") <- attr(object,"Simulate")
+  attr(Sobs.densities,"packages") <- list(add_simulation=attr(object,"packages"), logL_method=packages)
+  attr(Sobs.densities,"env") <- attr(object,"env")
   attr(Sobs.densities,"callfn") <- "infer_logLs"
   attr(Sobs.densities,"projectors") <- attr(object,"projectors")
   whichvar <- apply(Sobs.densities[,allPars,drop=FALSE],2L,function(v) length(unique(range(v)))>1)

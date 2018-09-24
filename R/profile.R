@@ -14,8 +14,6 @@
                                projKnotNbr=300,
                                example_maxtime=2.5,
                                ## partly doc'ed and does not need more
-                               cores_avail_warned=FALSE,
-                               nb_cores_warned=FALSE,
                                nb_cores=NULL,
                                ## undocumented
                                binningExponent=0.5,

@@ -1,6 +1,7 @@
 \name{options}
 \alias{Infusion.options}
 \alias{Infusion.getOption}
+\alias{parallel}
 \title{Infusion options settings}
 \description{
   Allow the user to set and examine a variety of \emph{options}
@@ -31,6 +32,7 @@ Infusion.getOption(x)
 \item{\code{nbCluster = quote(seq(ceiling(nrow(data)^0.3)))}:}{default value of \code{nbCluster} used in clustering by \code{Rmixmod}}
 \item{\code{example_maxtime=2.5}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples (or some very rough approximation for it) on one author's laptop is compared to this value.} 
+\item{\code{nb_cores}}{Number of cores for parallel computations (see Details for implementation of these).}
 } 
 and possibly other undocumented values for development purposes.
   }
@@ -38,6 +40,8 @@ and possibly other undocumented values for development purposes.
 }
 \details{
   The default \code{nbCluster} value is the upper value of the range recommended in the \code{mixmod} statistical documentation (Mixmod Team, 2016). If clustering by the given number(s) of clusters fails, decreasing values are tryied until success.
+  
+  \code{Infusion} can perform parallel computations if several cores are available and requested though \code{Infusion.options(nb_cores=.)}. If the \code{doSNOW} back-end is attached (by explicit request from the user), it will be used; otherwise, \code{pbapply} will be used. Both provide progress bars, but \code{doSNOW} may provide more efficient load-balancing. The character shown in the progress bar is \code{'P'} for parallel via \code{doSNOW} backend, \code{'p'} for parallel via \code{pbapply} functions, and \code{'s'} for serial via \code{pbapply} functions. I addition, \code{add_simulation} can parallelise at two levels: at an outer level over parameter point, or atan inner level over simulation replicates for each parameter point. The  progress bas of the outer computation is shown, but the character shown in the progress bar is \code{'N'} if the inner computation is parallel via the \code{doSNOW} backend, and \code{'n'} if it is parallel via \code{pbapply} functions. So, one should see either \code{'P'} or \code{'N'} when using \code{doSNOW}.
 }
 \references{
 Mixmod Team (2016). Mixmod Statistical Documentation. Université de Franche-Comté,

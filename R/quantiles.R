@@ -151,9 +151,10 @@ infer_surface.tailp <- function(object,
                          ranFix=list(nu=4),
                          HLmethod=method,
                          init.corrHLfit=init.corrHLfit) ## clean as one can expect
-    corrPars <- thisfit$corrPars[["1"]]
-    if (is.null(corrPars)) corrPars <- thisfit$corrPars ## F I X M E transitional code 
-    allFix <- c(corrPars,list(lambda=thisfit$lambda))
+    if (thisfit$spaMM.version<"2.4.26") {
+      corrPars1 <- thisfit$corrPars[["1"]]
+    } else corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
+    allFix <- c(corrPars1,list(lambda=thisfit$lambda))
   } else {
   }
   # 

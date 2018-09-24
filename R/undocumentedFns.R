@@ -109,9 +109,10 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   fit <- do.call(corrHLfit,arglist)
   #if(verbose) cat("Smoothing the data, may be slow...\n")
   arglist$data <- data
-  corrPars <- fit$corrPars[["1"]]
-  if (is.null(corrPars)) corrPars <- fit$corrPars ## F I X M E transitional code 
-  ranfix <- c(corrPars,list(lambda=fit$lambda))
+  if (fit$spaMM.version<"2.4.26") {
+    corrPars1 <- fit$corrPars[["1"]]
+  } else corrPars1 <- get_ranPars(fit,which="corrPars")[["1"]]
+  ranfix <- c(corrPars1,list(lambda=fit$lambda))
   arglist$ranFix <- ranfix
   arglist$`init.corrHLfit` <- NULL
   fit <- do.call(corrHLfit,arglist)

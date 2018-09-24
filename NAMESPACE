@@ -7,11 +7,12 @@ importFrom("grDevices", "adjustcolor")
 importFrom("methods", "slot", "new")
 importFrom("mvtnorm", "dmvnorm", "rmvnorm")
 importFrom("numDeriv", "grad", "hessian", "jacobian")
-importFrom("pbapply", "pblapply", "pboptions")
+importFrom("pbapply", "pblapply", "pboptions", "pbreplicate", "pbsapply")
 importFrom("proxy", "dist")
 #importFrom("Rmixmod", "mixmodCluster", "mixmodStrategy", "mixmodGaussianModel", "plotCluster")
 importFrom("spaMM", "corrHLfit", "MaternCorr", "mapMM", "fitme", "spaMM.colors", "fixef", "filled.mapMM", 
            "spaMM.filled.contour", "HLCor", "HLfit", "spaMMplot2D", "get_residVar") ## doc'ed fns
+importFrom("spaMM", "get_ranPars") 
 importFrom("spaMM", "makeTicks") ## undoc fns
 importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", 
            "predict", "qchisq", "runif", "uniroot", "binomial", "poisson", "constrOptim", "dchisq", "profile", "confint", "rnorm")
@@ -33,6 +34,7 @@ S3method(print, logLs)
 S3method(summary, logLs)
 S3method(plot, SLikp)
 S3method(plot, SLik_j)
+S3method(plot,MixmodResults)
 S3method(print, SLikp)
 S3method(summary, SLikp)
 S3method(confint,SLik)

@@ -10,11 +10,7 @@
     MSEs <- structure(attr(etas,"predVar")[1L],names="MSL") ## of predict= of logL
   }
   if ( any(MSEs<0) ) {
-    if (inherits(object,"SLik")) {
-      message("Inaccurate MSE computation suggests poor smoothing of likelihoods.")
-    } else if (inherits(object,"SLikp")) {
-      message("Inaccurate MSE computation suggests poor smoothing of tail probabilities.")
-    }      
+    message("Inaccurate MSE computation, presumably from nearly-singular covariance matrices.")
     # in particular in infer_surface.tailp 
     # infinite lambda => MSE < 0 => nvec[1]<0 => size<0 in rvolTriangulation crashes 
     MSEs[MSEs<0] <- NA ## quick patch
@@ -118,11 +114,7 @@
   slr <- object$MSL$maxlogL -logls[]
   MSEs <- c(diag(covmat[-1,-1,drop=FALSE])+covmat[1,1]-2*covmat[1,-1])
   if ( any(MSEs<0) ) {
-    if (inherits(object,"SLik")) {
-      message("Inaccurate MSE computation suggests poor smoothing of likelihoods.")
-    } else if (inherits(object,"SLikp")) {
-      message("Inaccurate MSE computation suggests poor smoothing of tail probabilities.")
-    }      
+    message("Inaccurate MSE computation, presumably from nearly-singular covariance matrices.")
     MSEs[MSEs<0] <- NA ## quick patch
   }
   RMSEs <- sqrt(MSEs)

@@ -5,7 +5,10 @@ add_reftable <- function(...) { ## fn for ABC like simulation
 
 add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
                            nRealizations=NULL,
-                           newsimuls=NULL,verbose=interactive()) {
+                           newsimuls=NULL, verbose=interactive(), nb_cores=NULL, packages=NULL,env=NULL,
+                           control.Simulate=NULL,
+                           ...) {
+  if (is.null(control.Simulate)) control.Simulate <- list(...)
   old_nRealizations <- Infusion.getOption("nRealizations")
   if (is.null(nRealizations)) {
     nRealizations <- old_nRealizations
@@ -22,29 +25,153 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     prevmsglength <- 0L
     nsim <- nrow(par.grid)
     gridsimuls <- list()
-    for (ii in seq(nsim)) {
-      par <- par.grid[ii,,drop=FALSE]
-      simuls <- replicate(n=nRealizations,do.call(Simulate,par))
-      if (is.null(dim(simuls))) {
+    cores_info <- .init_cores(nb_cores=nb_cores)
+    cl <- cores_info$cl
+    if ( ! is.null(cl)) {
+      parallel::clusterExport(cl, list("packages"),envir=environment()) ## passes the list of packages to load
+      # Infusion not leaded in child process !
+      #parallel::clusterExport(cl, list("nRealizations"),envir=environment()) 
+      #parallel::clusterCall(cl,fun=Infusion.options,nRealizations=nRealizations)
+      if ( ! is.null(env)) parallel::clusterExport(cl=cl, as.list(ls(env)),envir=env)
+    }
+    nb_cores <- cores_info$nb_cores
+    as_one <- identical(names(nRealizations),"as_one")
+    if (as_one) { 
+      which_cl <- "param"
+    } else {
+      which_cl <- names(nb_cores) ## the name comes from explicit user input; this is doc'ed in ?add_simulation
+      if (is.null(which_cl)) {
+        if (nRealizations>1L) {
+          which_cl <- "replic"
+        } else which_cl <- "param"
+      }
+    }
+    if (which_cl=="replic") {
+      repl_cl <- cl ## the one used by simfn_per_par()
+      if (length(repl_cl) > 1L) {
+        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
+        if (cores_info$has_doSNOW) {
+          ## arguments such as Simulate are evaluated in the child envir so we pass definition under the "Simulate" name
+          names(lisimfun) <- "Simulate" 
+          pb_char <- "N" # nested
+        } else { ## arguments such as Simulate are evaluated in the parent envir to "myrnorm" so we pass def undern "myrnorm" name
+          names(lisimfun) <- Simulate ## with the name of the function
+          pb_char <- "n" # nested
+        }
+        dotenv <- list2env(lisimfun)
+        parallel::clusterExport(cl=repl_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+      } else pb_char <- "s"
+      param_cl <- NULL
+    } else {
+      param_cl <- cl
+      if (length(param_cl) > 1L) {
+        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
+        if (cores_info$has_doSNOW) {
+          pb_char <- "P"
+        } else {
+          pb_char <- "p"
+          names(lisimfun) <- Simulate ## with the name of the function
+          dotenv <- list2env(lisimfun)
+          parallel::clusterExport(cl=param_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+        }
+      } else pb_char <- "s"
+      repl_cl <- NULL 
+    }
+    #
+    ############################################# simfn_per_par ######################################"
+    simfn_per_par <- function(ii) {
+      par <- par.grid[ii,,drop=FALSE] ## 1-row data frame: treated as list by do.call() or c(); but:
+      parlist <- c(par,control.Simulate) ## now parlist is a list, not a data.frame
+      #
+      if (length(repl_cl)>1L  && cores_info$has_doSNOW) { ## for the balancing only since we don't want the progress bar
+        iii <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'ii'
+        foreach_args <- list(
+          iii = seq_len(nRealizations), 
+          .combine = "cbind",
+          .packages= packages,
+          .inorder = TRUE, .errorhandling = "pass"## "pass" to see error messages
+        )
+        foreach_blob <- do.call(foreach::foreach,foreach_args)
+        abyss <- foreach::`%dopar%`(foreach_args, Sys.setenv(LANG = "en"))
+        simuls <- foreach::`%dopar%`(foreach_blob, do.call(Simulate,parlist))
+        if ( ! is.null(mess <- simuls$message && is.list(mess) && is.character(mess[[1L]]))) {
+          stop(paste0("The parallel call in add_simulation returned messages as\n",
+                      mess[[1L]],
+                      "If these indicate that some function could not be found,\n",
+                      "try the 'env' argument, as in env=list2env(list(myfn=myfn))\n",
+                      "to pass the 'myfn' function to all cores."))
+        }
+        # simuls <- foreach::`%dopar%`(foreach_blob, do.call("myrnorm",parlist)) #works
+      } else if (as_one) { # case: no repl_cl parallelisation
+        simuls <- do.call(Simulate,parlist)
+      } else {
+        opb <- pboptions(type="none") ## silences the inner progress bar.S..
+        on.exit(pboptions(opb)) ## ...but not the outer one
+        simuls <- pbreplicate(n=nRealizations,do.call(Simulate,parlist),cl=repl_cl)
+        if ((len<- length(dim(simuls)))>2L) {
+          mess <- paste("The 'Simulate' function appears to return a ",len-1,"-dimensional table,\n",
+                        " in a case where it should return a vector;\n",
+                        " pbreplicate(n=nRealizations,do.call(Simulate,.),.) has dimensions",
+                        paste("(",paste(dim(simuls),collapse=","),")"),"\n",
+                        "  where nRealizations =",paste(deparse(nRealizations)),"\n",
+                        "If you indeed want 'Simulate' to return all realizations in a table,\n",
+                        "then use the named form nRealizations=c(as_one=.).\n",
+                        "otherwise, check the return format of 'Simulate'.")
+          stop(mess)
+        }
+      }
+      #
+      if (as_one && ncol(simuls)!=nRealizations) stop(paste("The 'Simulate' function must return a matrix with 'nRealizations' columns.\n",
+                                                            "Here ncol(simuls)=",ncol(simuls),"vs. nRealizations=",nRealizations))
+      if (is.null(dim(simuls))) { ## converts to 1-row matrix
         colName <- names(simuls[1])
         dim(simuls) <- c(length(simuls),1)
         colnames(simuls) <- colName
       } else if (nrow(simuls)>1L) simuls <- t(simuls)
       if(inherits(simuls,"numeric")) simuls <- matrix(simuls) ## if scalar summ stat.
       #colnames(simuls) <- stats
-      if (is.null(colnames(simuls))) stop("The 'Simulate' function must provide names for the statistics.")
-      attr(simuls,"par") <- par
-      gridsimuls <- c(gridsimuls,list(simuls)) 
-      if (verbose) {
-        if (nRealizations>1 || ! ii %% 1000 || ii==nsim ) {
-          msg <- paste(ii,"simulations run out of", nsim," ")
-          prevmsglength <- .overcat(msg, prevmsglength) ## does not work well in interactive call to knitr -> redirection of stderr to file; no overwriting
-        } 
-      }
+      if (is.null(colnames(simuls))) stop("The 'Simulate' function must provide names for the returned statistics.")
+      attr(simuls,"par") <- par ## 1-row data frame (see comment in project.character())
+      return(simuls)
     }
+    ##################################################################################################"
+    if (length(param_cl) > 1L) { ## ~ .run_cores, but object -> par.grid, list element -> ii index, and using param_cl
+      if (cores_info$has_doSNOW) {
+        pb <- txtProgressBar(max = nrow(par.grid), style = 3, char=pb_char) ## doSNOW => 'long' progress bar
+        if (verbose) {
+          progress <- function(n) setTxtProgressBar(pb, n)
+          parallel::clusterExport(cl=param_cl, list(c(Simulate,"progress")),envir=environment()) ## slow! why?
+          .options.snow <- list(progress = progress)
+        } else .options.snow <- NULL
+        ii <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'ii'
+        foreach_args <- list(
+          ii = seq_len(nrow(par.grid)), 
+          .packages= packages,
+          .options.snow = .options.snow,
+          .inorder = TRUE, .errorhandling = #"remove"
+                                          "pass"## "pass" to see error messages
+        )
+        foreach_blob <- do.call(foreach::foreach,foreach_args)
+        gridsimuls <- foreach::`%dopar%`(foreach_blob, simfn_per_par(ii))
+        if (cores_info$has_doSNOW) close(pb)
+      } else {
+        if (verbose) {
+          pbopt <- pboptions(nout=min(100,2*nrow(par.grid)),type="timer", char=pb_char) ## pbapply:: 'short' progress bar
+        } else pbopt <- pboptions(type="none")
+        gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl) 
+        pboptions(pbopt)
+      }
+    } else { 
+      if (verbose) {
+        pbopt <- pboptions(nout=min(100,2*nrow(par.grid)),type="timer", char=pb_char)
+      } else pbopt <- pboptions(type="none")
+      gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl)
+      pboptions(pbopt)
+    } # a list of simulated distributions is returned in all cases.
+    .close_cores(cores_info)
     if (nRealizations>1) {
       simulations <- c(simulations,gridsimuls) 
-    } else {
+    } else { ## nRealizations=1 (~ABC reference table)
       gridsimuls <- do.call(rbind,gridsimuls)
       gridsimuls <- cbind(par.grid,gridsimuls)
       simulations <- rbind(simulations,gridsimuls)
@@ -68,6 +195,9 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
   attr(simulations,"LOWER") <- do.call(pmin,lowersList)
   attr(simulations,"UPPER") <- do.call(pmax,uppersList)
   attr(simulations,"Simulate") <- Simulate
+  attr(simulations,"control.Simulate") <- control.Simulate
+  attr(simulations,"packages") <- packages
+  attr(simulations,"env") <- env ## an environment!
   if ( nRealizations>1 && ! inherits(simulations,"EDFlist")) class(simulations) <- c("EDFlist",class(simulations))
   Infusion.options(nRealizations=old_nRealizations)
   return(simulations)

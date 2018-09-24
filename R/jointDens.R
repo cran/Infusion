@@ -20,8 +20,12 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
                             verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                          final=FALSE)  
 ) {
+  if ( ! is.data.frame(data)) {
+    stop(paste("'object' is not a data.frame.\n Did you mean to call infer_logLs() rather than infer_Slik_joint() ?"))
+  }
   if ( ! is.null( cn <- colnames(stat.obs))) {
-    message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame.")
+    message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame. Converting...")
+    stat.obs <- drop(stat.obs)
     names(stat.obs) <- cn ## minimal patch so that names() can be used, not colnames()
   }
   if (!is.list(verbose)) verbose <- as.list(verbose)
@@ -411,3 +415,5 @@ profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no nee
 # .plotClusters <- function(object,which,...) {
 #   plotCluster(object[[which]],data=object$logLs,...)
 #}
+
+plot.MixmodResults <- function(x,...) {message('Use plotCluster(.,data=<slik object>$logLs,variable1=.,variable2=.)\n to plot a "MixModResults" object')}

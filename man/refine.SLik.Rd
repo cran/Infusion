@@ -20,7 +20,8 @@
             newsimuls = NULL, useCI = TRUE, level = 0.95, 
             verbose = list(most=interactive(),movie=FALSE),
             precision = Infusion.getOption("precision"),
-            method,...)
+            nb_cores = NULL, packages=attr(object$logLs,"packages"), 
+            env=attr(object$logLs,"env"), method, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -61,6 +62,9 @@ A number of parameter points (excluding replicates and confidence interval point
     Requested local precision of surface estimation, in terms of prediction variance of both the maximum summary log-likelihood and the likelihood ratio at any CI bound available. Iterations will stop when either \code{maxit} is reached, or this precision is reached for these MSEs.
     A given precision on the CI bounds themselves might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
   }
+  \item{nb_cores}{integer (possibly named, see \code{\link{add_simulation}}), passed to \code{add_simulation} and \code{infer_logLs}.}
+  \item{packages}{NULL or a list with possible elements \code{add_simulation} and \code{logL_method}, passed respectively as the \code{packages} arguments of \code{add_simulation} and \code{infer_logLs}, wherein they are the additional packages to be loaded on child processes. The default value keeps pre-\code{refine} values over iterations.}
+  \item{env}{An environment, passed as the \code{env} argument to \code{add_simulation}. The default value keeps the pre-\code{refine} value over iterations.}
   \item{method}{(A vector of) suggested method(s) for estimation of smoothing parameters (see \code{method} argument of \code{\link{infer_surface}}). The ith element of the vector is
   used in the ith iteration, if available; otherwise the last element is used. This argument is not always heeded, in that REML may be used if the suggested method is GCV but it appears to perform poorly. The default for \code{SLikp}, \code{SLik_j}, and \code{SLikp} objects are \code{"REML"}, \code{"mixmodCluster"}, and \code{"PQL"}, respectively. 
   }

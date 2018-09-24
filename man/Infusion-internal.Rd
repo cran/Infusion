@@ -10,6 +10,7 @@
 \alias{predict.SLik_j}
 \alias{predict.MixmodResults}
 \alias{predict.SLikp}
+\alias{plot.MixmodResults}
 \alias{print.SLik}
 \alias{print.SLik_j}
 \alias{print.logLs}
@@ -32,7 +33,6 @@
 %\alias{infer_LR_pvalue_from_EDF}
 %\alias{infer_refDensity}
 \alias{myrnorm} % (data!) because testthat appears to expect this from the package's namespace environment
-%\alias{overcat}
 %\alias{par_wrapper}
 %\alias{predictWrap}
 %\alias{sample_vertices}

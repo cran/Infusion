@@ -3,6 +3,21 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 1.3.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item New 'nb_cores', 'packages' and 'env' arguments for more widely allowing parallel simulation in add_simulation() and refine().
+\item New '...' (or 'control.Simulate') argument in add_simulation() for controlling the 'Simulate' arguments.
+\item Dependencies changed for parallel computations; ''doSNOW' usage has been reinstated optionally (though only 'foreach' appears in the package dependencies). See help("Infusion.options") for details.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item plot.SLik() failed for more than two parameters.
+\item project() did not work on reference tables. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 1.2.0}{
 \subsection{MAJOR DEPENDENCY CHANGES}{
 \itemize{

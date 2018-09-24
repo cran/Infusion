@@ -110,7 +110,7 @@ plot.SLik <-function(x,y,filled=FALSE,
               ...)
       }
     } 
-  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette)}
+  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
   invisible(object)
 }
 

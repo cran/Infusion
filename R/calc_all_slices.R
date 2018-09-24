@@ -1,4 +1,4 @@
-.calc_all_slices <- function(object,fittedPars,color.palette) {
+.calc_all_slices <- function(object,fittedPars,color.palette,plot.axes=NULL) {
   if (is.null(color.palette)) {
     ##               function(v) {spaMM.colors(v, redshift = 1/2)}
     color.palette <- function(n){adjustcolor(.viridisOpts(n,bias=2),offset = c(0.5, 0.5, 0.3, 0))}
@@ -39,7 +39,10 @@
       if (interactive() && ! rstudioMess) plot.new() # provideDevice(bbdefaultPars=TRUE) does not work by itself, cf providePlotFile
       if(is.null(plot.axes)) {
         # axis(1); axis(2); ## ? not in plot.SLik()  
-        plot.axes <- quote(points(varVals[xyz$xlab],varVals[xyz$ylab],pch="+",cex=1.5)) 
+        plot.axes <- quote({
+          axis(1);axis(2);
+          points(varVals[xyz$xlab],varVals[xyz$ylab],pch="+",cex=1.5) # locate the maximum
+        }) 
       }
       spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main=main,
                            color.palette=color.palette,

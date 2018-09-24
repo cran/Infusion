@@ -34,12 +34,14 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
                              maxit=1,n=NULL,useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE),newsimuls=NULL,
                              useCI=TRUE,level=0.95,verbose=list(most=interactive(),movie=FALSE),
                              precision = Infusion.getOption("precision"),
+                             nb_cores=NULL, packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env"),
                              method, ## "GCV" and HLfit methods for Slik objects; mixmodCluster or... for SLik_j objects
                              ...) {
   if (!is.list(verbose)) verbose <- as.list(verbose)
   if (is.null(names(verbose))) names(verbose) <- c("most","movie")[seq_len(length(verbose))]
   if (is.null(verbose$most)) verbose$most <- interactive()
   if (is.null(verbose$movie)) verbose$movie <- FALSE
+  if (is.null(packages)) packages <- packages$add_simulation
   it <- 0L
   previous_cumul_iter <- max(object$logLs$cumul_iter)
   RMSEs <- object$RMSEs
@@ -100,15 +102,28 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       Simulate <- attr(surfaceData,"Simulate")
       if (is.null(Simulate)) return(trypoints)
       if (inherits(object,"SLik_j")) {
-        newsimuls <- add_reftable(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most)     
-        newsimuls$cumul_iter <- previous_cumul_iter + it +1L
+        newsimuls <- add_reftable(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most,
+                                  control.Simulate=attr(surfaceData,"control.Simulate"),
+                                  nb_cores=nb_cores, packages=packages$add_simulation, env=env)     
       } else {
-        newsimuls <- add_simulation(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most)    
+        # essai qui ne marche pas car les arguments NULL font désordre
+        # mc <- match.call(expand.dots = TRUE)
+        # ## We extract relevant arguments as promises (prior.weights, in particular, are held unevaluated)
+        # mc <- mc[intersect(names(mc), names(formals(add_simulation)))] 
+        # mc$Simulate <- Simulate
+        # mc$"par.grid" <- trypoints
+        # mc$verbose <- verbose$most
+        # mc[[1L]] <- get("add_simulation", asNamespace("Infusion")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+        # newsimuls <- eval(mc,parent.frame())   
+        newsimuls <- add_simulation(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most,
+                                    control.Simulate=attr(surfaceData,"control.Simulate"),
+                                    nb_cores=nb_cores, packages=packages$add_simulation, env=env)    
       }
     }
     projectors <- object$projectors
     if ( ! is.null(projectors)) newsimuls <- project(newsimuls,projectors=eval(projectors)) 
     if (inherits(object,"SLik_j")) {
+      newsimuls$cumul_iter <- previous_cumul_iter + it +1L
       if ( ! (is.matrix(newsimuls) || is.data.frame(newsimuls)) ) {
         stop("'newsimuls' must be a matrix or data.frame for refine.Slik_j() method.")
       }
@@ -133,6 +148,8 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       mc$verbose <- verbose$most
       mc$`stat.obs` <- attr(object$logLs,"stat.obs") ## bc otherwise mc$`stat.obs` stores a promise such as 'Sobs'
       # if (inherits(object,"SLikp")) arglist$refDensity <- object$refDensity 
+      if ( ! is.null(nb_cores)) mc$nb_cores <- nb_cores ## do not erase the value in the initial call stored in the object
+      if ( ! is.null(packages)) mc$packages <- packages$logL_method ## idem
       newlogLs <- eval(mc)
       if (verbose$most) cat ("\n")
       successrate <- length(which(newlogLs$isValid>0))/nrow(newlogLs)
@@ -141,9 +158,10 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       surfaceData <- rbind(surfaceData,newlogLs)
       itmethod <- method[min(length(method),it+1L)] ## may be overriden below when hat(nu) is low.
       ## tests whether resmoothing can yield substantial improvements:
-      corrPars <- object$fit$corrPars[["1"]]
-      if (is.null(corrPars)) corrPars <- object$fit$corrPars ## F I X M E transitional code 
-      allFix <- c(corrPars[c("nu","rho")],list(lambda=object$fit$lambda[1],phi=object$fit$phi[1],beta=fixef(object$fit)))
+      if (object$fit$spaMM.version<"2.4.26") {
+        corrPars1 <- object$fit$corrPars[["1"]]
+      } else corrPars1 <- get_ranPars(object$fit,which="corrPars")[["1"]]
+      allFix <- c(corrPars1[c("nu","rho")],list(lambda=object$fit$lambda[1],phi=object$fit$phi[1],beta=fixef(object$fit)))
       previousRho <- allFix$rho ## full length vector of scale params
       if (is.null(previousRho)) {
         stop("is.null(previousRho) in 'refine.default'. Check code (trRho?).")
@@ -158,10 +176,10 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         relerr <- respvar/(1e-6+msepred)
         #print(paste("relerr:",relerr))
         smoothingOK <- (relerr>0.8 && relerr<1.25) ## practically always, given distrib of estimator 'relerr'  
-        currsurf <- infer_surface(surfaceData,method=itmethod,verbose=FALSE,allFix=allFix)
         #
         if (FALSE) {
           # assessment by perturbing rho
+          currsurf <- infer_surface(surfaceData,method=itmethod,verbose=FALSE,allFix=allFix)
           currp_bv <- currsurf$fit$APHLs$p_bv
           testCorr <- allFix
           testCorr$rho <- previousRho*1.1
@@ -177,17 +195,18 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         #print(paste("smoothingOK:",smoothingOK))
         # object <- infer_surface(surfaceData,method="newdata",verbose=FALSE,allFix=allFix) 
         ## newdata => source des biais évidents: pas assez de pointsenhaut de la surface ?
-        object <- currsurf ## ie infer surface from purgedlogLs from new data,method=itmethod, with allFix=<previous pars>
+        object <- infer_surface(surfaceData,method=itmethod,verbose=FALSE,allFix=allFix)
+        ## : ie infer surface from purgedlogLs from new data,method=itmethod, with allFix=<previous pars>
       } else {
         object <- infer_surface(surfaceData,method=itmethod,verbose=verbose$most) ## new smoothing;could reuse corrpars 
         if (verbose$most) {
-          corrPars <- object$fit$corrPars[["1"]]
-          if (is.null(corrPars)) corrPars <- object$fit$corrPars ## F I X M E transitional code 
-          vranfix <- unlist(corrPars[c("nu","rho")])
+          if (object$fit$spaMM.version<"2.4.26") {
+            corrPars1 <- object$fit$corrPars[["1"]]
+          } else corrPars1 <- get_ranPars(object$fit,which="corrPars")[["1"]]
+          vranfix <- unlist(corrPars1[c("nu","rho")])
           cat(paste(paste(paste(names(vranfix),"=",signif(vranfix)),collapse=", ")," (estimated by ",itmethod,")\n",sep=""))
         }
       }
-      currsurf <- NULL ## garbage management
       object$latestPoints <- nrow(surfaceData)+1-seq_len(nrow(newlogLs)) ## for plots
     }    
     # maximization, new CIs, new MSEs

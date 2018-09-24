@@ -16,7 +16,7 @@ project.character <- function(x,
     totsim <- data
   } else if (inherits(data,"list")) {
     pardata <- lapply(data,function(ll) {
-      cbind(ll,attr(ll,"par")[x],row.names=NULL)
+      cbind(ll,attr(ll,"par")[x],row.names=NULL) ## attr(ll,"par") is a (1-row) data.frame and cbind(matrix,data.frame) is data.frame!
     }) ## puts the parameter values into the data
     totsim <- do.call(rbind,pardata)
   } else {
@@ -35,9 +35,10 @@ project.character <- function(x,
         essfit <- fitme(form,data=randsim, fixed=list(nu=4), 
                          method=method, init=list(rho=rep(NA,length(stats)))) 
       } else essfit <- corrHLfit(form,data=randsim,init.corrHLfit=list(rho=rep(NA,length(stats))),ranFix=list(nu=4))  
-      corrPars <- essfit$corrPars[["1"]]
-      if (is.null(corrPars)) corrPars <- essfit$corrPars ## F I X M E transitional code 
-      ranfix <- c(corrPars,list(lambda=essfit$lambda,phi=essfit$phi))
+      if (essfit$spaMM.version<"2.4.26") {
+        corrPars1 <- essfit$corrPars[["1"]]
+      } else corrPars1 <- get_ranPars(essfit,which="corrPars")[["1"]]
+      ranfix <- c(corrPars1,list(lambda=essfit$lambda,phi=essfit$phi))
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]
     } else if (method=="GCV") {## no difference between trainingSize and knotNbr
       randsim <- totsim[sample(nrow(totsim),min(nr,knotnbr)),]
@@ -153,19 +154,29 @@ project.default <- function (x,projectors,...) {
   if (is.vector(x)) {
     ly <- as.numeric(ly)
     names(ly) <- names(projectors)
-  } else { ## expects ly to be a matrix
+  } else { ## expects ly to be a matrix (SLik case), or data.frame (SLikj case)
     colnames(ly) <- names(projectors)
-    if ( ! is.null(parms <- attr(x,"parms"))) { ## assumes that the new data 'x' has not be modified
-      ly <- cbind(x[,parms,drop=FALSE],ly)
-      attr(ly,"parms") <- parms
-      attr(ly,"stats") <- names(projectors)
+    if (inherits(x,"data.frame")) { ## projection of reftable
+      ly <- cbind(x[,names(attr(x,"LOWER")),drop=FALSE],ly) ## automatic conversion of ly to data.frame
     }
+    # if ( ! is.null(parms <- attr(x,"parms"))) { ## assumes that the new data 'x' has not be modified
+    #   ly <- cbind(x[,parms,drop=FALSE],ly)
+    #   attr(ly,"parms") <- parms
+    #   attr(ly,"stats") <- names(projectors)
+    # }
   }
   attr(ly,"Simulate") <- attr(x,"Simulate")
+  attr(ly,"control.Simulate") <- attr(x,"control.Simulate")
+  attr(ly,"packages") <- attr(x,"packages")
+  attr(ly,"env") <- attr(x,"env") ## an environment!
   attr(ly,"projectors") <- as.list(match.call())$projectors
-  ly ## basically a matrix
+  ly ## same type as input (as doc'ed)
 }
 
 neuralNet <- function(formula,data) {
+  if (isNamespaceLoaded("doSNOW")) {
+    unloadNamespace("doSNOW")
+    on.exit(do.call("loadNamespace",list(package="doSNOW"))) ## ...but not the outer one
+  }
   .mixclustWrap("train", list(form=formula, data=data, method='nnet', linout=TRUE, trace = FALSE), pack="caret")
 }
