@@ -6,7 +6,11 @@
 Create or augment a list of simulated distributions of summary statistics 
 }
 \description{
-\code{add_simulation} creates or augments a list of simulated distributions of summary statistics, and formats the simulation results appropriately for further use. The user does not have to think about this return format. Instead, s-he only has to think about the very simple return format of the function given as its \code{Simulate} argument. Alternatively, if the simulation function cannot be called directly by the R code, simulated distributions can be added easily using the \code{newsimuls} argument, again using a simple format (see \code{onedistrib} in the Examples). \code{add_reftable} is a wrapper for \code{add_simulation}, enforcing \code{nRealizations=1}.
+\code{add_simulation} creates or augments a list of simulated distributions of summary statistics, and formats the simulation results appropriately for further use. The user does not have to think about this return format. Instead, s-he only has to think about the very simple return format of the function given as its \code{Simulate} argument. Alternatively, if the simulation function cannot be called directly by the R code, simulated distributions can be added easily using the \code{newsimuls} argument, again using a simple format (see \code{onedistrib} in the Examples). 
+
+\code{add_reftable} is a wrapper for \code{add_simulation}, enforcing \code{nRealizations=1}: see example \code{\link{example_reftable}}.
+
+These functions can run simulations in a parallel environment. Special care is then needed to ensure that all required packages are loaded in the called processes, and required all variables and function are passed therein: check the \code{packages} and \code{env} arguments.
 }
 \usage{
 add_simulation(simulations=NULL, Simulate, par.grid=NULL, 
@@ -30,7 +34,7 @@ The name (as a character string) of the *R* function used to generate empirical 
  A data frame of which each line matches the single vector argument of \code{Simulate}.
 }
   \item{newsimuls}{
-  If the function used to generate empirical distributions cannot be called by R, then \code{newsimuls} can be used to provide these distributions. This argument should be list of matrices, each with a \code{par} attribute (see Examples). Rows of each matrix stand for simulation replicates and rows for the different summary statistics. This is the same format as the return value of \code{add_simulation}, except that the latter adds further attributes.
+  If the function used to generate empirical distributions cannot be called by R, then \code{newsimuls} can be used to provide these distributions. See Details for the structure of this argument.
 }
   \item{nb_cores}{Number of cores for parallel simulation; \code{NULL} or integer value. If the latter is unnamed or has name \code{"replic"}, parallelisation is over the different samples for each parameter value. For any other name (e.g., \code{nb_cores=c(foo=7)}), parallelisation is over the parameter values (the rows of \code{par.grid}). In all cases, the progress bar is over parameter values. See Details in \code{\link{Infusion.options}} for the subtle way these different cases are distinguished in the progress bar.
  }
@@ -40,13 +44,18 @@ The name (as a character string) of the *R* function used to generate empirical 
   \item{\ldots}{
   For \code{add_reftable}: arguments passed to \code{add_simulation}. Any of the \code{add_simulation} arguments is valid, except \code{nRealizations}.    For \code{add_simulation}: additional arguments passed to \code{Simulate}, beyond the parameter vector; see \code{nsim} argument of \code{myrnorm_tab()} in the Examples. These arguments should be constant through all the simulation workflow.
  }
- \item{control.Simulate}{An alternative (exclusive to \ldots) way of passing additional arguments passed to \code{Simulate}, beyond the parameter vector}
+ \item{control.Simulate}{A list, used as an exclusive alternative to \dQuote{\ldots} to pass additional arguments to \code{Simulate}, beyond the parameter vector. The list must contain the same elements as would go in the \dQuote{\ldots}.}
    \item{packages}{For parallel evaluation: Names of additional libraries to be loaded on the cores, necessary for \code{Simulate} evaluation.}
    \item{env}{For parallel evaluation: an environment containing additional objects to be exported on the cores, necessary for \code{Simulate} evaluation.}
 }
+\details{
+The \code{newsimuls} argument should have the same structure as the return value of \code{add_simulation} itself, except that \code{newsimuls} may include only a subset of the attributes returned by \code{add_simulation}. \bold{In the reference-table case}, it is thus a data frame; its required attributes are \code{LOWER} and \code{UPPER} which are named vectors giving bounds for the parameters which are variable in the whole analysis (note that the names identify these parameters in the case this information is not available otherwise from the arguments). The values in these vectors may be incorrect in the sense of failing to bound the parameters in the \code{newsimuls}, as the actual bounds are then corrected using parameter values in \code{newsimuls} and attributes from \code{simulations}. \bold{Otherwise}, \code{newsimuls} should be list of matrices, each with a \code{par} attribute (see Examples). Rows of each matrix stand for simulation replicates and columns stand for the different summary statistics. 
+}
 \value{
-If only one realization is computed for each (vector-valued) parameter, a data.frame is returned. 
-Otherwise, the return value is an objet of class \code{EDFlist}, which is a list of matrices-with-attribute. Each matrix contains a simulated distribution of summary statistics for given parameters, and the \code{"par"} attribute is a 1-row data.frame of parameters. If \code{Simulate} is used, this must give all the parameters to be estimated; otherwise it must at least include all variable parameters in this \bold{or later} simulations to be appended to the simulation list. 
+If only one realization is computed for each (vector-valued) parameter, a data.frame (with additional attributes) is returned. 
+Otherwise, the return value is an objet of class \code{EDFlist}, which is a list-with-attributes of matrices-with-attribute. Each matrix contains a simulated distribution of summary statistics for given parameters, and the \code{"par"} attribute is a 1-row data.frame of parameters. If \code{Simulate} is used, this must give all the parameters to be estimated; otherwise it must at least include all variable parameters in this \bold{or later} simulations to be appended to the simulation list. 
+
+The value has the following attributes: \code{Simulate, control.Simulate, packages, env} (all orresponding to input arguments), \code{LOWER} and \code{UPPER} which are each a vector of per-parameter minima and maxima deduced from any \code{newsimuls} argument, any \code{par.grid} argument, and any \code{simulations} argument. 
 }
 \examples{
 # example of building a list of simulations from scratch:

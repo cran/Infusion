@@ -1,4 +1,4 @@
-.filled.contour.plot <-function(object,xyvars,color.palette=NULL,grid_args=list()) {
+.filled.contour.plot <- function(object,xyvars,color.palette=NULL,grid_args=list()) {
   grillelist <- list()
   grid_args$values <- object$logLs[,xyvars[1L]]
   grillelist[[xyvars[1L]]] <- do.call(".gridfn",grid_args) 
@@ -24,7 +24,8 @@
   ) 
   dev <- getOption("device")
   rstudioMess <-  ( (class(dev)=="character" && dev == "RStudioGD") )  
-  if (interactive() && ! rstudioMess) plot.new() 
+  knitRmess <- isTRUE(getOption('knitr.in.progress')) # (class(dev)=="function" && environmentName(parent.env(environment(dev)))=="imports:knitr")
+  if (interactive() && ! (rstudioMess || knitRmess)) plot.new() 
   if (is.null(color.palette)) {
     #color.palette <- function(n){spaMM.colors(n,redshift=3)}
     color.palette <- function(n){adjustcolor(.viridisOpts(n,bias=2),offset = c(0.5, 0.5, 0.3, 0))}
@@ -35,7 +36,7 @@
   )
 }
 
-plot.SLik_j <-function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
+plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                        color.palette = NULL, plot.axes = NULL, 
                        plot.title = NULL, ...) {
   object <- x
@@ -47,9 +48,11 @@ plot.SLik_j <-function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
   if (np==1L) {
     x <- object$logLs[,fittedPars,drop=FALSE]
     y <- Ztransf(predict(object,newdata=x)) ## <>1
+    ylim <- max(1,y)
+    if (is.infinite(ylim)) {ylim <- NULL} else {ylim <- c(0,ylim)}
     plot(x[,1],y,main="Summary Likelihood Ratio",xlab=fittedPars,ylab="SL ratio",
          xlim=range(x),
-         ylim=c(0,max(1,y)))
+         ylim=ylim)
     points(object$MSL$MSLE,1,pch="+")
     if (!is.null(object$CIobject)) {
       yci <- rep(exp(-qchisq(0.95,1)/2),NROW(object$CIobject$bounds))

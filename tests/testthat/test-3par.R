@@ -1,3 +1,5 @@
+print("test 3 parameters:")
+
 wout_refine <- 85
 if (Infusion.getOption("example_maxtime")>wout_refine) {
   ## (1) function for sampling from 3-parameter gaussian mixture

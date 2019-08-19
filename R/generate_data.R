@@ -41,8 +41,8 @@ if (FALSE) {
   dsimuls <- add_simulation(,Simulate="blurred", par.grid=parsp) 
   
   ## Use projection to construct better summary statistics for each each parameter 
-  mufit <- project("mu",stats=c("mean","var"),data=dsimuls)
-  s2fit <- project("s2",stats=c("mean","var"),data=dsimuls)
+  if (inherits(mufit,"HLfit")) mufit <- project("mu",stats=c("mean","var"),data=dsimuls)
+  if (inherits(s2fit,"HLfit")) s2fit <- project("s2",stats=c("mean","var"),data=dsimuls)
   
   ## plots
   mapMM(mufit,map.asp=1,

@@ -85,7 +85,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
       ranfix <- list(rho=1/gcvres$CovFnParam[fittedPars],
                      nu=gcvres$CovFnParam[["smoothness"]])
       ## we need etaFix given ranFix and the same purgedlogLs
-      thisfit <- HLCor(form,data=purgedlogLs,ranPars=ranfix,REMLformula=form)
+      thisfit <- HLCor(form,data=purgedlogLs,ranPars=ranfix,HLmethod="REML")
       ranfix <- c(ranfix,list(lambda=thisfit$lambda,phi=thisfit$phi))  
       etafix <- list(beta=fixef(thisfit))
     } else { ## handles all HLfit methods
@@ -139,13 +139,14 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
     if (is.null(etafix)) stop("'etafix' is NULL for method = newdata in infer_surface.logLs")
     ranfix <- allFix
     ranfix$beta <- NULL
+    # With etaFix vs without it, p_bv is computed differently, except if REMLformula is used
     thisfit <- corrHLfit(form,data=boundedlogLs,ranFix=ranfix,etaFix=etafix,REMLformula=form)
 #    if (verbose) cat(paste("for newdata:",thisfit$APHLs$p_bv,"\n"))    
   } else { ## 'allFix' is TRUE and 'method' is not "newdata"
     etafix <- allFix["beta"]
     ranfix <- allFix
     ranfix$beta <- NULL
-    # avec etaFix le calcul de p_bv est different du calcul for estimating... sauf si REMLformula est utilisé
+    # With etaFix vs without it, p_bv is computed differently, except if REMLformula is used
     thisfit <- corrHLfit(form,data=purgedlogLs,ranFix=ranfix,etaFix=etafix,REMLformula=form) 
 #    if (verbose) cat(paste("for testing:",thisfit$APHLs$p_bv,"\n"))    
   }
@@ -182,7 +183,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 ## version that overcome new problems in Rmixmod 2.1.0: we need one clustering to succeed.
 # 1 cluster should always work, so nbCluster=1:2 even if only2 is interesting 
 .suspectPts_by_Rmixmod <- function(logls,threshold) {
-  clu <- suppressWarnings(.mixclustWrap("mixmodCluster",list(data=logls,nbCluster=1:2,seed=123) ))
+  clu <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=logls,nbCluster=1:2,seed=123) ))
   if (clu@results[[2L]]@error=="No error") {
     ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
     ## and all lower and higher points form another => we risk losing the higer points !
@@ -197,7 +198,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 
 .suspectPts_by_mclust <- function(logls,threshold) {
   if ("package:mclust" %in% search()) { 
-    clu <- .mixclustWrap("Mclust",
+    clu <- .do_call_wrap("Mclust",
                          list(data=logls,G=2,verbose=FALSE),
                          pack="mclust")
   } else  stop("'mclust' should be loaded first.") ## occurs if only loaded in a child process...

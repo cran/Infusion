@@ -9,6 +9,7 @@
   ## mfrow marche pas avec rstudio (?) cf OKsmooth::provideDevice
   dev <- getOption("device")
   rstudioMess <-  ( (class(dev)=="character" && dev == "RStudioGD") )  
+  knitRmess <- isTRUE(getOption('knitr.in.progress')) # (class(dev)=="function" && environmentName(parent.env(environment(dev)))=="imports:knitr")
   if (! rstudioMess) opar <- par(cex.axis=loccex.axis, no.readonly = TRUE)
   #  # if (! rstudioMess) opar <- par(mfrow=c(ceiling(np/intsqrt), intsqrt), cex.axis=loccex.axis, no.readonly = TRUE)
   #  ## cf blackbox::gridfn, makeplot, etc
@@ -36,7 +37,7 @@
       xyz <- as.surface(grillelist, z, order.variables = "xy")
       main <- paste("logL slice for",paste(fixedPars,signif(fixedVals,4),sep="=",collapse=", "))
       varVals <- object$MSL$MSLE[c(xvar,yvar)]
-      if (interactive() && ! rstudioMess) plot.new() # provideDevice(bbdefaultPars=TRUE) does not work by itself, cf providePlotFile
+      if (interactive() && ! (rstudioMess || knitRmess)) plot.new() 
       if(is.null(plot.axes)) {
         # axis(1); axis(2); ## ? not in plot.SLik()  
         plot.axes <- quote({

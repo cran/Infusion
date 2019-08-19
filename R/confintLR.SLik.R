@@ -63,7 +63,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
   ## FR->FR uniroot has no parscale agument 
   tol <- .Machine$double.eps^0.25* (hival-lowval)
   if (tol< .Machine$double.eps ) {
-    warning(paste("Range for",parm,"is as narrow as",signif(hival-lowval,3),
+    warning(paste("UPPER-LOWER range for",parm,"is as narrow as",signif(hival-lowval,3),
                   "\n which is likely to cause problems in various numerical procedures.\n Consider using another parameter scale."))
   }
   v <- object$MSL$MSLE; v[names(v)] <- NA ## create template 

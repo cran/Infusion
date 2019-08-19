@@ -3,6 +3,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
     pkg   <- "Infusion"
     require(pkg, character.only=TRUE, quietly=TRUE)
     if (interactive())  {
+      while (dev.cur()>1L) dev.off()
       oldask <- devAskNewPage(ask=FALSE)
       testfiles <- dir("C:/home/francois/travail/stats/InferentialSimulation/Infusion/package/tests/testthat/",pattern="*.R",full.names = TRUE)
       oldmaxt <- Infusion.options(example_maxtime=100) ## won't test much otherwise

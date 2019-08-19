@@ -2,23 +2,24 @@
 \alias{infer_SLik_joint}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Infer as (summary) likelihood surface from a simulation table
+Infer a (summary) likelihood surface from a simulation table
 }
 \description{
   This infers the likelihood surface from a simulation table where each simulated data set is drawn for a distinct (vector-valued) parameter, as is usual for reference tables in ABC.
-  A parameter density is inferred, as well as a joint density of parameters and summary statistics, and the likelihood surface is inferred from these two densities.    This is not yet extensively tested, nor the code has been optimized. 
+  A parameter density is inferred, as well as a joint density of parameters and summary statistics, and the likelihood surface is inferred from these two densities. 
 }
 \usage{
 infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"), 
                 Simulate = attr(data, "Simulate"), 
                 nbCluster= Infusion.getOption("nbCluster"),
                 using = Infusion.getOption("using"), 
-                verbose = list(most = interactive(), final = FALSE))
+                verbose = list(most=interactive(),pedantic=FALSE,final=FALSE),
+                marginalize = TRUE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{data}{
-  A data frame, whose rows contain a vector of parameters and one realization of the summary statistics for these parameters.
+  A data frame, whose each row contains a vector of parameters and one realization of the summary statistics for these parameters.
   }
   \item{stat.obs}{
   Named numeric vector of observed values of summary statistics.
@@ -32,14 +33,16 @@ infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"),
 }
   \item{using}{Either \code{"Rmixmod"} or \code{"mclust"} to select the clustering methods used. 
 }
+\item{marginalize}{Boolean; whether to derive the clustering of fitted parameters by marginalization of the joint clustering (default, and introduced in version 1.3.5); or by a distinct call to a clustering function. 
+}
   \item{verbose}{
 A list as shown by the default, or simply a vector of booleans, indicating respectively
-  whether to display (1) some information about progress; (2) a final summary of the results after all elements of \code{simuls} have been processed.
+  whether to display (1) some information about progress; (2) more information whose importance is not clear to me; (3) a final summary of the results after all elements of \code{simuls} have been processed.
 }
 }
 \value{
-  An object of class \code{SLik_j}, which is a list including two \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
-  objects, and additional members not documented here.
+  An object of class \code{SLik_j}, which is a list including an \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
+  object (or equivalent objects produced by non-default methods), and additional members not documented here. If projection was used, the list includes a  data.frame \code{raw_data} of cumulated unprojected simulations.
 }
 \examples{
 if (Infusion.getOption("example_maxtime")>50) {
@@ -59,7 +62,7 @@ if (Infusion.getOption("example_maxtime")>50) {
   simuls <- add_reftable(Simulate="myrnorm",par.grid=parsp)
   # Infer surface:
   densv <- infer_SLik_joint(simuls,stat.obs=Sobs)
-  # Usual workflow using inferred suface:
+  # Usual workflow using inferred surface:
   slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
   slik_j <- refine(slik_j,maxit=5)
   plot(slik_j)

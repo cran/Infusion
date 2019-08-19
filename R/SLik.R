@@ -13,15 +13,15 @@ print.SLik <-function(x,...) {summary.SLik(x,...)}
 ## 3 digits on RMSEs makes a lot of digits overall   
 `summary.SLik` <- function(object, ...) { 
   if ( !is.null(object$MSL) ) {
-    cat(paste("*** Summary ML (cumul. iter. =",max(object$logLs$cumul_iter),"): ***\n",sep=""))
+    cat(paste("*** Summary ML (",max(object$logLs$cumul_iter)," iterations, ",nrow(object$logLs)," points): ***\n",sep=""))
     print(c(object$MSL$MSLE,"logL"=object$MSL$maxlogL,"RMSE_logL"=unname(object$RMSEs[1L])))
     #
-    if (inherits(object,"SLik_j")) {
-      cat("*** Interval estimates ***\n")
-      print(object$pars)
-    } else if( ! is.null(CIobject <- object$par_RMSEs))  {
+    if( ! is.null(CIobject <- object$par_RMSEs))  {
       cat("*** Interval estimates and RMSEs ***\n")
       print(object$par_RMSEs)
+    } else if ( ! is.null(object$pars)) {
+      cat("*** Interval estimates ***\n")
+      print(object$pars)
     } 
   } else {
     cat("SLik object created. Use MSL(.) to obtain point estimates and CIs.\n")

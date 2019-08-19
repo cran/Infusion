@@ -41,9 +41,13 @@ plot.SLik <-function(x,y,filled=FALSE,
     yf <- Ztransf(object$obspred[,attr(object$obspred,"fittedName")]) ## < 1
     x <- object$logLs[,fittedPars]
     y <- Ztransf(object$logLs[,object$colTypes$logLname]) ## <>1
+    ylim <- max(1,y)
+    if (is.infinite(ylim)) {
+      ylim <- NULL ## most likely an horrendous plot from horrendous input, but avoids an error()
+    } else {ylim <- c(0,ylim)}
     plot(xf,yf,main="Summary Likelihood Ratio",xlab=fittedPars,ylab="SL ratio",
          xlim=range(x),
-         ylim=c(0,max(1,y)))
+         ylim=ylim)
     points(x=x,y=y,pch=20,cex=0.5,col="red")
     points(object$MSL$MSLE,1,pch="+")
     if (!is.null(object$CIobject)) {
@@ -105,7 +109,7 @@ plot.SLik <-function(x,y,filled=FALSE,
         mapMM(object$fit,Ztransf=Ztransf,
               color.palette=color.palette,nlevels=50,
               plot.axes=plot.axes, ## appears to accept eval(.) too 
-              plot.title=plot.title, ## appears to accept eval(.) toobut best not (cf contours)
+              plot.title=plot.title, ## appears to accept eval(.) too but best not (cf contours)
               decorations=decos,
               ...)
       }

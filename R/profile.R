@@ -10,8 +10,14 @@
                                mixmodGaussianModel="Gaussian_pk_Lk_Dk_A_Dk", ## shape is constant but volume and orientation are free
                                mclustModel="VEV", ## equivalent to default mixmodGaussianModel
                                precision=0.1,
-                               projTrainingSize=200,
-                               projKnotNbr=300,
+                               #
+                               projTrainingSize=quote(.trainsize_fn(method,stats)),
+                               knotnbr=quote(.knotnbr_fn(method,stats)),
+                               projKnotNbr=1000,
+                               oob=TRUE, # for .predictWrap()
+                               nodesize=5L, ## that the default for regression by ranger and randomForest # F I X M E see comments where this is used
+                               trainsize=quote(nraw/log(nraw)), ## for UNUSED code in update_projectors block 
+                               #
                                example_maxtime=2.5,
                                ## partly doc'ed and does not need more
                                nb_cores=NULL,
@@ -25,7 +31,15 @@
                                useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), ## does not seem to be used
                                CIweight=1, ## used in rparam to enhance (or not) sampling near CI bounds
                                rparamfn="rparam", ## allows choice of function
-                               fitmeCondition=quote(TRUE)
+                               fitmeCondition=quote(TRUE),
+                               # Rmixmod controls
+                               criterion="AIC",
+                               strategy=quote(mixmodStrategy()), # nbIterationInAlgo=200
+                               mixmodSeed=123,
+                               clu_optimizer="",
+                               # trypoints controls
+                               samplingType=c(posterior=0.8,uniform=0.2),
+                               expansion=1
                                )
 
 

@@ -9,19 +9,22 @@
 }
 \description{
 % FR->FR must beupdated for SLik_j
-  This is a generic function with currently methods for \code{SLik} and \code{SLikp} objects (as produced by \code{\link{MSL}}). Depending on the value of its \code{newsimuls} argument, and on whether the function used to generate empirical distributions can be called by R, it (1) defines new parameters points and/or (2) infers their summary likelihood or tail probabilities for each parameter point independently, adds the inferred values results as input for refined inference of likelihood or P-value response surface, and provides new point estimates and confidence intervals.
+  This is a generic function with currently methods for \code{SLik}, \code{SLik_j} and \code{SLikp} objects (as produced by \code{\link{MSL}}). Depending on the value of its \code{newsimuls} argument, and on whether the function used to generate empirical distributions can be called by R, it (1) defines new parameters points and/or (2) infers their summary likelihood or tail probabilities for each parameter point independently, adds the inferred values results as input for refined inference of likelihood or P-value response surface, and provides new point estimates and confidence intervals.
 }
 \usage{
 \method{refine}{SLik}(object, method=NULL, ...)
 %\method{refine}{SLik_j}(object,...)
 %\method{refine}{SLikp}(object,...)
-\method{refine}{default}(object, surfaceData, maxit = 1, n = NULL, 
+\method{refine}{default}(object, surfaceData, Simulate =
+            attr(surfaceData,"Simulate"), maxit = 1, n = NULL, 
             useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), 
             newsimuls = NULL, useCI = TRUE, level = 0.95, 
             verbose = list(most=interactive(),movie=FALSE),
             precision = Infusion.getOption("precision"),
             nb_cores = NULL, packages=attr(object$logLs,"packages"), 
-            env=attr(object$logLs,"env"), method, ...)
+            env=attr(object$logLs,"env"), method, 
+            eval_RMSEs=TRUE, update_projectors = FALSE,
+            ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -31,6 +34,9 @@ an \code{SLik} object
   \item{surfaceData}{
 A data.frame with attributes, usually taken from the \code{object} and thus \bold{not} specified by user, usable as input for \code{\link{infer_surface}}.  
 }
+  \item{Simulate}{
+    Character string: name of the function used to simulate sample. The only meaningful non-default value is \code{NULL}, in which case \code{refine} may return (if \code{newsimuls} is also \code{NULL}) a data frame of parameter points on which to run a simulation function.
+  }
   \item{maxit}{
   Maximum number of iterative refinements (see also \code{precision} argument)
 }
@@ -59,7 +65,7 @@ A number of parameter points (excluding replicates and confidence interval point
   whether to display (1) some information about progress and results; (2) a plot of a the likelihood surface, if a one- or two-parameters surface is inferred. \code{verbose$movie} controls whether such plots are produced for all iterations. \code{verbose$most} controls other verbosity, including whether a final plot is produced. 
   }
   \item{precision}{
-    Requested local precision of surface estimation, in terms of prediction variance of both the maximum summary log-likelihood and the likelihood ratio at any CI bound available. Iterations will stop when either \code{maxit} is reached, or this precision is reached for these MSEs.
+    Requested local precision of surface estimation, in terms of prediction standard errors (RMSEs) of both the maximum summary log-likelihood and the likelihood ratio at any CI bound available. Iterations will stop when either \code{maxit} is reached, or if the RMSEs have been computed for the object (see \code{eval_RMSEs} argument) and this precision is reached for the RMSEs.
     A given precision on the CI bounds themselves might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
   }
   \item{nb_cores}{integer (possibly named, see \code{\link{add_simulation}}), passed to \code{add_simulation} and \code{infer_logLs}.}
@@ -68,6 +74,8 @@ A number of parameter points (excluding replicates and confidence interval point
   \item{method}{(A vector of) suggested method(s) for estimation of smoothing parameters (see \code{method} argument of \code{\link{infer_surface}}). The ith element of the vector is
   used in the ith iteration, if available; otherwise the last element is used. This argument is not always heeded, in that REML may be used if the suggested method is GCV but it appears to perform poorly. The default for \code{SLikp}, \code{SLik_j}, and \code{SLikp} objects are \code{"REML"}, \code{"mixmodCluster"}, and \code{"PQL"}, respectively. 
   }
+  \item{eval_RMSEs}{passed to \code{\link{MSL}}}
+  \item{update_projectors}{Boolean; whether to update the projectors at each iteration.}
   \item{\dots}{
 further arguments passed to or from other methods. \code{refine} passes these arguments to the \code{plot} method suitable for the \code{object}. 
 }
@@ -75,6 +83,7 @@ further arguments passed to or from other methods. \code{refine} passes these ar
 \value{
   An updated \code{SLik} or \code{SLik_j} object.
 }
+\note{See workflow examples in \code{\link{example_reftable}} and \code{\link{example_raw}}}
 \examples{
-## see main documentation page for the package
+  ## see Note.
 }

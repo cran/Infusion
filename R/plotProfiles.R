@@ -27,15 +27,21 @@ plot1Dprof <- function(object, ## SLik object
                    stop("Unknown 'type'")
     )
   } 
-  opar <- par(plotpar, no.readonly = TRUE)
-  ##
-  dev <- getOption("device")
-  rstudioMess <-  ( (class(dev)=="character" && dev == "RStudioGD") )  
-  # mfrow marche pas avec rstudio (?) cf OKsmooth::provideDevice
-  if (! rstudioMess) {
+  if (FALSE) { # messy and buggy (par(mfrow) not being restored, when - out of Rstudio - it is here modified) 
+    # opar <- par(plotpar, no.readonly = TRUE)
+    # ##
+    # dev <- getOption("device")
+    # rstudioMess <-  ( (class(dev)=="character" && dev == "RStudioGD") )  
+    # # mfrow marche pas avec rstudio (?) cf OKsmooth::provideDevice
+    # if (! rstudioMess) {
+    #   intsqrt <- floor(sqrt(np))
+    #   if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}
+    #   par(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis)
+    # }
+  } else {
     intsqrt <- floor(sqrt(np))
     if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}
-    par(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis)
+    opar <- par(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis, plotpar, no.readonly = TRUE)
   }
   ##
   for (st in pars) {
@@ -139,16 +145,7 @@ plot2Dprof <- function(object, ## SLik object
   } 
   opar <- par(plotpar, no.readonly = TRUE)
   ##
-  dev <- getOption("device")
-  rstudioMess <-  ( (class(dev)=="character" && dev == "RStudioGD") )  
-  # mfrow marche pas avec rstudio (?) cf OKsmooth::provideDevice
   np <- length(pars)
-  if (! rstudioMess) {
-    intsqrt <- floor(sqrt(np))
-    if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}
-    par(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis)
-  }
-  ##
   for (it in seq_len(np-1)) {
     par1 <- pars[it]
     lob <- lower[par1]

@@ -16,7 +16,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     Infusion.options(nRealizations=nRealizations)
   }
   if ( ! is.null(simulations)) {
-    lowersList <- list(old=attr(simulations,"LOWER"))  
+    lowersList <- list(old=attr(simulations,"LOWER"))  ## that gives the parameter names...
     uppersList <- list(old=attr(simulations,"UPPER"))  
   } else lowersList <- uppersList <- list()
   if ( ! is.null(par.grid)) {
@@ -65,15 +65,15 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     } else {
       param_cl <- cl
       if (length(param_cl) > 1L) {
-        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
         if (cores_info$has_doSNOW) {
           pb_char <- "P"
         } else {
           pb_char <- "p"
-          names(lisimfun) <- Simulate ## with the name of the function
-          dotenv <- list2env(lisimfun)
-          parallel::clusterExport(cl=param_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
         }
+        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
+        names(lisimfun) <- Simulate ## with the name of the function
+        dotenv <- list2env(lisimfun)
+        parallel::clusterExport(cl=param_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
       } else pb_char <- "s"
       repl_cl <- NULL 
     }
@@ -84,7 +84,8 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
       parlist <- c(par,control.Simulate) ## now parlist is a list, not a data.frame
       #
       if (length(repl_cl)>1L  && cores_info$has_doSNOW) { ## for the balancing only since we don't want the progress bar
-        iii <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'ii'
+        foreach_blob <- foreach::foreach(i=1:length(repl_cl))
+        abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
         foreach_args <- list(
           iii = seq_len(nRealizations), 
           .combine = "cbind",
@@ -92,9 +93,8 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
           .inorder = TRUE, .errorhandling = "pass"## "pass" to see error messages
         )
         foreach_blob <- do.call(foreach::foreach,foreach_args)
-        abyss <- foreach::`%dopar%`(foreach_args, Sys.setenv(LANG = "en"))
         simuls <- foreach::`%dopar%`(foreach_blob, do.call(Simulate,parlist))
-        if ( ! is.null(mess <- simuls$message && is.list(mess) && is.character(mess[[1L]]))) {
+        if ( inherits(data.frame(simuls),"list") && ! is.null(mess <- simuls$message && is.list(mess) && is.character(mess[[1L]]))) {
           stop(paste0("The parallel call in add_simulation returned messages as\n",
                       mess[[1L]],
                       "If these indicate that some function could not be found,\n",
@@ -137,8 +137,9 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     ##################################################################################################"
     if (length(param_cl) > 1L) { ## ~ .run_cores, but object -> par.grid, list element -> ii index, and using param_cl
       if (cores_info$has_doSNOW) {
-        pb <- txtProgressBar(max = nrow(par.grid), style = 3, char=pb_char) ## doSNOW => 'long' progress bar
-        if (verbose) {
+        show_pb <- (verbose && ! isTRUE(getOption('knitr.in.progress')))
+        if (show_pb) {
+          pb <- txtProgressBar(max = nrow(par.grid), style = 3, char=pb_char) ## doSNOW => 'long' progress bar
           progress <- function(n) setTxtProgressBar(pb, n)
           parallel::clusterExport(cl=param_cl, list(c(Simulate,"progress")),envir=environment()) ## slow! why?
           .options.snow <- list(progress = progress)
@@ -153,16 +154,16 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
         )
         foreach_blob <- do.call(foreach::foreach,foreach_args)
         gridsimuls <- foreach::`%dopar%`(foreach_blob, simfn_per_par(ii))
-        if (cores_info$has_doSNOW) close(pb)
+        if (show_pb) close(pb)
       } else {
-        if (verbose) {
+        if (verbose && ! isTRUE(getOption('knitr.in.progress'))) {
           pbopt <- pboptions(nout=min(100,2*nrow(par.grid)),type="timer", char=pb_char) ## pbapply:: 'short' progress bar
         } else pbopt <- pboptions(type="none")
         gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl) 
         pboptions(pbopt)
       }
     } else { 
-      if (verbose) {
+      if (verbose && ! isTRUE(getOption('knitr.in.progress'))) {
         pbopt <- pboptions(nout=min(100,2*nrow(par.grid)),type="timer", char=pb_char)
       } else pbopt <- pboptions(type="none")
       gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl)
@@ -182,19 +183,29 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     uppersList$pargrid <- attr(par.grid,"UPPER")
     if (is.null(uppersList$pargrid)) uppersList$pargrid <- apply(par.grid,2,max)
   } 
-  if ( ! is.null(newsimuls)) {
-    simulations <- c(simulations,newsimuls)
-    ## also for SLik_j: otherwise the parNames info cannot be certain...
-    newsimuls_pars <- do.call(rbind,lapply(newsimuls,attr,which="par")) ## allows the following check 
-    if (is.null(newsimuls_pars)) {
-      stop("'par' attribute appears to be missing from each of the new simulations.")
+  if ( ! is.null(newsimuls)) { ## user input 'newsimuls'
+    simulations <- rbind(simulations,newsimuls)
+    if (inherits(newsimuls,"list")) {
+      newsimuls_pars <- do.call(rbind,lapply(newsimuls,attr,which="par")) ## allows the following check 
+      if (is.null(newsimuls_pars)) {
+        stop("'par' attribute appears to be missing from each of the new simulations.")
+      }
+      lowersList$new <- attr(newsimuls,"LOWER") 
+      if (is.null(lowersList$new)) lowersList$new <- apply(newsimuls_pars,2,min)
+      uppersList$new <- attr(newsimuls,"UPPER")
+      if (is.null(uppersList$new)) uppersList$new <- apply(newsimuls_pars,2,max)
+    } else { ## also for SLik_j: otherwise the parNames info cannot be certain...
+      lowersList$newLOWER <- LOWER <- attr(newsimuls,"LOWER") 
+      if (is.null(LOWER)) stop('Please provide attr(newsimuls,"LOWER")')
+      lowersList$new <- apply(newsimuls[,names(LOWER)],2L,min) # values in LOWER are ingored; names are used
+      uppersList$newUPPER <- attr(newsimuls,"UPPER")
+      #if (is.null(uppersList$newUPPER)) stop('Please provide attr(newsimuls,"UPPER")') #not necessary
+      lowersList$new <- apply(newsimuls[,names(LOWER)],2L,max)
     }
-    lowersList$new <- apply(newsimuls_pars,2,min)
-    uppersList$new <- apply(newsimuls_pars,2,max)
   }
-  attr(simulations,"LOWER") <- do.call(pmin,lowersList)
+  attr(simulations,"LOWER") <- do.call(pmin,lowersList) # pmin over sucessive parameters across lowersList members ($pargrid, $new...)
   attr(simulations,"UPPER") <- do.call(pmax,uppersList)
-  attr(simulations,"Simulate") <- Simulate
+  if ( ! missing(Simulate)) attr(simulations,"Simulate") <- Simulate
   attr(simulations,"control.Simulate") <- control.Simulate
   attr(simulations,"packages") <- packages
   attr(simulations,"env") <- env ## an environment!

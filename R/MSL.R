@@ -79,7 +79,7 @@
   CIs <- object$CIobject$CIs
   lenCIs <- length(CIs)    
   pars <- names(CIs)
-  resu <- rep(NA,nrow(object$CIobject$bounds)) ## (over)size as the MSEs have no NAs
+  resu <- rep(NA_real_,NROW(object$CIobject$bounds)) ## (over)size as the MSEs have no NAs
   names(resu) <- rownames(object$CIobject$bounds)
   map <- c(low=1L,up=2L)
   for (nam in rownames(object$CIobject$bounds)) {
@@ -129,7 +129,8 @@
 
 # both SLik and SLikp, with different methods used in -> allCIs -> confint
 MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
-                 eval_RMSEs=inherits(object,"SLik"), ...) { ##
+                 eval_RMSEs=TRUE, #inherits(object,"SLik"), 
+                 ...) { ##
   # Maximization ## revised 13/07/2016
   fittedPars <- object$colTypes$fittedPars
   if (inherits(object,"SLik")) {
@@ -152,11 +153,13 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
     init <- init*0.999+ colMeans(vertices)*0.001
   }
   method <- "L-BFGS-B" ## works also in 1Dand does not ignore the init value (while Brent would)
+  time1 <- Sys.time()
   msl <- optim(init, function(v) {as.numeric(predict(object,newdata=v))},
                ## as numeric because otherwise in 1D, optim -> minimize -> returns a max 
                ##   of same type as predict(object$fit,newdata=v), i.e. matrix... 
                ## FR->FR with spaMM>1.7.12, predict(object,newdata=v)[] should be OK  
                lower=lower,upper=upper,control=list(fnscale=-1,parscale=parscale),method=method)
+  optim_time <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1) ## spaMM:::.timerraw(time1)
   if (inherits(object,"SLik") && length(fittedPars)>1L) {
     locchull <- resetCHull(vertices, formats=c("constraints"))
     if( ! (isPointInCHull(msl$par, constraints=locchull[c("a", "b")]))) { ## if simple optim result not in convex hull
@@ -188,7 +191,8 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
   if (inherits(object$fit,"HLfit")) object$MSL$predVar <- attr(predict(object,newdata=msl$par,variances=list(linPred=TRUE,dispVar=TRUE)),"predVar")
   # CIs
   if(CIs) {
-    locverbose <- (verbose && ! inherits(object$fit,"HLfit")) ## for HLfit objetc, printing is later
+    locverbose <- (verbose && ! inherits(object$fit,"HLfit")## for HLfit object, printing is later
+                   && optim_time>3) # guess when it is useful to be verbose from the time to find the maximum 
     if (locverbose) {
       prevmsglength <- .overcat("Computing confidence intervals...\n", 0L) 
     } else {

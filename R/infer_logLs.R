@@ -47,9 +47,9 @@ infer_logL_by_Hlscv.diag <- function(EDF,stat.obs,logLname,verbose) {
     logL <- logL/2
     isValid <- FALSE
   } else {
-    Hmat <- .mixclustWrap("Hlscv.diag", list(x=locEDF), pack="ks")
-    fit <- .mixclustWrap("kde", list(x=locEDF,H=Hmat), pack="ks")
-    logL <- .mixclustWrap("predict", list(object=fit,x=stat.obs), pack="ks")
+    Hmat <- .do_call_wrap("Hlscv.diag", list(x=locEDF), pack="ks")
+    fit <- .do_call_wrap("kde", list(x=locEDF,H=Hmat), pack="ks")
+    logL <- .do_call_wrap("predict", list(object=fit,x=stat.obs), pack="ks")
     isValid <- TRUE
   }
   names(logL) <- logLname
@@ -65,7 +65,10 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
   } else {
     stop("'mclust' should be loaded first.")
   }
-  pred <- predict(fit,t(c(stat.obs))) ## pas de binFactor!
+  nbClu <- dim(fit$parameters$variance$sigma)[3L]
+  solve_t_chol_sigma <- vector("list", nbClu)
+  for (it in seq_len(nbClu)) solve_t_chol_sigma[[it]] <- solve(t(chol(fit$parameters$variance$sigma[,,it])))
+  pred <- predict(fit,t(c(stat.obs)), solve_t_chol_sigma=solve_t_chol_sigma) ## pas de binFactor!
   logL <- log(pred)
   if (invalid <- is.infinite(logL)) {
     #if (verbose) cat("!")
@@ -95,7 +98,8 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
       logL <- NA
     }
   } else {
-    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),log=TRUE) ## pas de binFactor!
+    solve_t_chol_sigma <- lapply(fit@parameters["variance"], function(mat) solve(t(chol(mat))))
+    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),solve_t_chol_sigma=solve_t_chol_sigma,log=TRUE) ## pas de binFactor!
     if (invalid <- is.infinite(logL)) {
       #if (verbose) cat("!")
       logL <- -.Machine$double.xmax
@@ -118,7 +122,9 @@ infer_logLs <- function(object,
                         ... ## required because if generic includes them...
 ) {
   if (is.data.frame(object)) {
-    stop(paste("'object' is a data.frame, not a list of matrices.\n Did you mean to call infer_Slik_joint() rather than infer_logLs() ?"))
+    stop(paste0("'object' is a data.frame, not a list of matrices.\n ",
+               "Did you mean to call infer_Slik_joint() rather than infer_logLs(),\n ",
+               "or was Infusion's 'nRealizations' set to 1 globally?"))
   }
   if ( ! is.null( cn <- colnames(stat.obs))) {
     message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame. Converting...")

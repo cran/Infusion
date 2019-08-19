@@ -5,7 +5,7 @@
   boundaries <- attr(stat.obs,"boundaries") 
   Sobs_activeBoundaries <- simuls_activeBoundaries <- freq <- NULL
   if ( ! is.null(boundaries) ) {
-    simulsMatches <- t(apply(data[,names(boundaries),drop=FALSE],1L,`==`,y=boundaries))
+    simulsMatches <- t(abs(apply(data[,names(boundaries),drop=FALSE],1L,`-`,y=boundaries))<1e-14)
     if (length(boundaries)==1L) { ## apply() fix
       simulsMatches <- t(simulsMatches)
       colnames(simulsMatches) <- names(boundaries)
@@ -59,13 +59,13 @@
   #  x <- mixmodCluster(as.data.frame(data),seq(2*log(nrow(data))),strategy = mixmodStrategy(seed=123))
   # statdoc of mixmod recommends ceiling(nrow(data)^0.3) and refers to Bozdogan93
   if (length(nbCluster)==1L) {
-    resu <- suppressWarnings(.mixclustWrap("Mclust",
+    resu <- suppressWarnings(.do_call_wrap("Mclust",
                           list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster,verbose=FALSE),
                           pack="mclust"))
     if (is.null(resu)) { ## If mclust fails bc of a singular gaussian component, it returns NULL...
       # try decreasing the number of clusters until mclust works
       for (nb in rev(seq_len(min(nbCluster)-1L))) {
-        resu <- suppressWarnings(.mixclustWrap("Mclust",
+        resu <- suppressWarnings(.do_call_wrap("Mclust",
                                                list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nb,verbose=FALSE),
                                                pack="mclust"))
         if ( ! is.null(resu) ) break
@@ -73,10 +73,10 @@
     } 
   } else { 
     models <- vector("list",length(nbCluster))
-    for (it in seq_along(nbCluster)) models[[it]] <- .mixclustWrap("Mclust",
+    for (it in seq_along(nbCluster)) models[[it]] <- .do_call_wrap("Mclust",
                                                                    list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster[it],verbose=FALSE),
                                                                    pack="mclust")
-    resu <- .get_best_mclust_by_AIC(models) 
+    resu <- .get_best_mclust_by_IC(models) 
   }
   if (resu$modelName=="VEV") { 
     ## then cov matrices are proportional, wecheck they are not too heterogeneous
@@ -92,16 +92,18 @@
   } 
   resu <- structure(resu,statNames=statNames,simuls_activeBoundaries=simuls_activeBoundaries,
                     Sobs_activeBoundaries=Sobs_activeBoundaries,freq=freq)
-  class(resu) <- "dMclust"
+  class(resu) <- c("dMclust", class(resu))
   return(resu)
 }
 
-.get_best_mclust_by_AIC <- function(cluObject) {
+.get_best_mclust_by_IC <- function(cluObject, which=Infusion.getOption("criterion")) {
   BICs <- logLs <- numeric(length(cluObject))
   for (it in seq_along(cluObject)) {
     BICs[it] <- cluObject[[it]]$BIC
     logLs[it] <- cluObject[[it]]$loglik
   }
+  if (which=="BIC") return(cluObject[[which.min(BICs)]])
+  # ELSE
   dfs <- (2*logLs+BICs)/(log(cluObject[[1]][["n"]]))
   AICs <- -2*logLs+2*dfs
   return(cluObject[[which.min(AICs)]])
@@ -109,18 +111,22 @@
 
 predict.dMclust <- function(object,
                             newdata, ## should be (reformatted) stat.obs (in canned procedures)
-                            tcstat.obs=NULL, ## to avoid checks of arguments
+                            tcstat.obs=NULL, ## to avoid checks of argument
+                            solve_t_chol_sigma_list,
                             log=FALSE,...) {
   statNames <- attr(object,"statNames")
   if (is.null(tcstat.obs)) {
     ns <- length(statNames)
     if (is.null(dim(newdata))) { ## less well controlled case, but useful for maximization (which is not performed in canned procedures)
-      newdata <- matrix(newdata,nrow=1L)
-      if (ns==ncol(newdata)) {
-        colnames(newdata) <- statNames
-      } else {
+      if ((ns <- length(statNames)) != length(newdata)) {
         stop(paste("(!) newdata has incorrect length. It should match the following variables:\n",
                    paste(statNames,collapse=" ")))
+      } else {
+        datanames <- names(newdata) # before they are erased by the next dim() assignment (!)
+        dim(newdata) <- c(1L, ns)
+        if (is.null(datanames)) {
+          colnames(newdata) <- statNames
+        } else colnames(newdata) <- datanames
       }
     } 
     if ( !is.null(Sobs_activeBoundaries <- attr(object,"Sobs_activeBoundaries"))) {
@@ -154,12 +160,12 @@ predict.dMclust <- function(object,
       density <- matrix(nrow=nrow(densitydata),ncol=nbCluster)
       for (k in 1:nbCluster) {
         density[,k] <- object$parameters$pro[k] * 
-          dmvnorm(densitydata, object$parameters$mean[,k], sigma= object$parameters$variance$sigma[,,k],log=log)
+          .fast_dmvnorm(densitydata, object$parameters$mean[,k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
       }
       maxlogs <- apply(density,1,max)
       normalizedlogs <- apply(density,2L,`-`,maxlogs) ## highest value per row is 0
       ## apply return mess again: 
-      if (is.vector(normalizedlogs)) normalizedlogs <- matrix(normalizedlogs,nrow=1)
+      if (is.vector(normalizedlogs))  dim(normalizedlogs) <- c(1L, length(normalizedlogs))
       mixture <- rowSums(exp(normalizedlogs)) ## exp(normalizedlogs) in (0,1); sum(exp(logLi-maxlog))= exp(-maxlog) sum(exp(logLi))= exp(-maxlog) sum(Li)
       mixture <- log(mixture) + maxlogs ## log(sum(Li))
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture + atb*log(freqs)
@@ -169,7 +175,7 @@ predict.dMclust <- function(object,
       density <- matrix(nrow=nrow(densitydata),ncol=nbCluster)
       for (k in 1:nbCluster) {
         density[,k] <- object$parameters$pro[k] * 
-          dmvnorm(densitydata, object$parameters$mean[,k], sigma= object$parameters$variance$sigma[,,k],log=log)
+          .fast_dmvnorm(densitydata, object$parameters$mean[,k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
       }
       mixture <- rowSums(density) ## sum(Li) 
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture*freqs

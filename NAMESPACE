@@ -16,7 +16,7 @@ importFrom("spaMM", "get_ranPars")
 importFrom("spaMM", "makeTicks") ## undoc fns
 importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", 
            "predict", "qchisq", "runif", "uniroot", "binomial", "poisson", "constrOptim", "dchisq", "profile", "confint", "rnorm")
-importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar", "packageDescription")
+importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar", "packageDescription", "getS3method")
 importFrom("viridis", "viridis")
 #importFrom("mclust", "Mclust", "densityMclust", "mclustBIC", "sim") ## mclustBIC bc Mclust() -> as.name("mclustBIC") but many more pop up...
 export(mapMM) ## from spaMM

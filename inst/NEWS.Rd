@@ -3,6 +3,33 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 1.4.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Out-of-bag projections used whenever relevant in projections using random-forests methods (which definitely improves the results over "in-bag" projections).
+\item New 'eval_RMSEs' argument of function refine.default().
+\item New argument 'update_projectors' in refine.default(), effective only for the reference table method.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+%\item Both default value of global option 'nbCluster' and new precise meaning of this option. Results of all methods using Rmixmod (the default) are modified. 
+\item 'ranger' package included in Suggests; random forest by 'ranger' is the new default projection 'method' in project.character().
+\item infer_SLik_joint() can now (automatically) provide correct results when there is *one* probability mass in the distribution of the summary statistics.
+\item infer_SLik_joint() can now handle 'using="mclust"' (but this will still provide incorrect results when there is a probability mass in the distribution of the summary statistics).
+\item Objects of class 'SLik_j' using projection now retain a cumulative table of unprojected simulations, from which new projections can be generated.
+\item Revised documentation including examples for the inference method based on reference tables.
+\item Internal methods in infer_SLik_joint() are modified by default so that numerical results are slightly modified. See its new argument 'marginalize' to control this.
+\item Defaults Infusion options 'projTrainingSize' and 'projKnotNbr' for projection by REML have been increased, because the called procedures are more efficiently implemented in versions of spaMM >= 2.7.0.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item RMSE computation on SLik_j objects could fail following Rmixmod::mixmodCluster()'s failure to fit a bootstrap replicate. 
+\item Potential problems with figure rendering when Rstudio's graphic device was *not* used. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 1.3.0}{
 \subsection{NEW FEATURES}{
 \itemize{
