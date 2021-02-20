@@ -16,7 +16,7 @@ These functions can run simulations in a parallel environment. Special care is t
 add_simulation(simulations=NULL, Simulate, par.grid=NULL, 
                nRealizations = NULL, newsimuls = NULL, 
                verbose = interactive(), nb_cores = NULL, packages = NULL, env = NULL,
-               control.Simulate=NULL, ...)
+               control.Simulate=NULL, cluster_args=list(), ...)
 add_reftable(...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -28,7 +28,7 @@ A list of simulations
   The number of simulated samples of summary statistics, for each empirical distribution (each row of \code{par.grid}). If the argument is NULL, the value is obtained by \code{Infusion.getOption}. If the argument is not NULL, \code{Infusion.options(nRealizations)} is set, but restored, on exit from \code{add_simulation}, to its initial value.
 }
   \item{Simulate}{
-The name (as a character string) of the *R* function used to generate empirical distributions of summary statistics (notably, for external simulation program, an R function wrapping the call to the external program must be provided). The function must have a single vector as argument, matching each row of \code{par.grid}. It must return a vector of summary statistics with named vector members; \bold{or} a single matrix of \code{nRealizations} simulations, in which case its rows and row names, must represent the summary statistics, it should have \code{nRealizations} columns, and \code{nRealizations} should be an integer names as \dQuote{\code{as_one}} (see Examples).
+An *R* function, or the name (as a character string) of an *R* function used to generate empirical distributions of summary statistics. When an external simulation program is called, \code{Simulate} must therefore be an R function wrapping the call to the external program. The function must have a single vector as argument, matching each row of \code{par.grid}. It must return a vector of summary statistics with named vector members; \bold{or} a single matrix of \code{nRealizations} simulations, in which case its rows and row names, must represent the summary statistics, it should have \code{nRealizations} columns, and \code{nRealizations} should be named integer of the form \dQuote{\code{c(as_one=.)}} (see Examples).
 }
   \item{par.grid}{
  A data frame of which each line matches the single vector argument of \code{Simulate}.
@@ -36,8 +36,9 @@ The name (as a character string) of the *R* function used to generate empirical 
   \item{newsimuls}{
   If the function used to generate empirical distributions cannot be called by R, then \code{newsimuls} can be used to provide these distributions. See Details for the structure of this argument.
 }
-  \item{nb_cores}{Number of cores for parallel simulation; \code{NULL} or integer value. If the latter is unnamed or has name \code{"replic"}, parallelisation is over the different samples for each parameter value. For any other name (e.g., \code{nb_cores=c(foo=7)}), parallelisation is over the parameter values (the rows of \code{par.grid}). In all cases, the progress bar is over parameter values. See Details in \code{\link{Infusion.options}} for the subtle way these different cases are distinguished in the progress bar.
+  \item{nb_cores}{Number of cores for parallel simulation; \code{NULL} or integer value, actin as a shortcut for \code{cluster_args$spec}. If \code{nb_cores} is unnamed or has name \code{"replic"} and if the simulation function does not return a single table for all replicates (thus, if \code{nRealizations} is \bold{not} a named integer of the form \dQuote{\code{c(as_one=.)}}, parallelisation is over the different samples for each parameter value. For any other explicit name (e.g., \code{nb_cores=c(foo=7)}), or if \code{nRealizations} is a named integer of the form \dQuote{\code{c(as_one=.)}}, parallelisation is over the parameter values (the rows of \code{par.grid}). In all cases, the progress bar is over parameter values. See Details in \code{\link{Infusion.options}} for the subtle way these different cases are distinguished in the progress bar.
  }
+ \item{cluster_args}{A list of arguments, passed to \code{\link[parallel]{makeCluster}}. May contain a non-null \code{spec} element, in which case the distinct \code{nb_cores} argument is ignored.}
   \item{verbose}{
   Whether to print some information or not.
  }
@@ -55,7 +56,7 @@ The \code{newsimuls} argument should have the same structure as the return value
 If only one realization is computed for each (vector-valued) parameter, a data.frame (with additional attributes) is returned. 
 Otherwise, the return value is an objet of class \code{EDFlist}, which is a list-with-attributes of matrices-with-attribute. Each matrix contains a simulated distribution of summary statistics for given parameters, and the \code{"par"} attribute is a 1-row data.frame of parameters. If \code{Simulate} is used, this must give all the parameters to be estimated; otherwise it must at least include all variable parameters in this \bold{or later} simulations to be appended to the simulation list. 
 
-The value has the following attributes: \code{Simulate, control.Simulate, packages, env} (all orresponding to input arguments), \code{LOWER} and \code{UPPER} which are each a vector of per-parameter minima and maxima deduced from any \code{newsimuls} argument, any \code{par.grid} argument, and any \code{simulations} argument. 
+The value has the following attributes: \code{LOWER} and \code{UPPER} which are each a vector of per-parameter minima and maxima deduced from any \code{newsimuls} argument, and optionally any of the arguments \code{Simulate, control.Simulate, packages, env, par.grid} and  \code{simulations} (all corresponding to input arguments when provided, except that the actual \code{Simulate} function is returned even if it was input as a name).
 }
 \examples{
 # example of building a list of simulations from scratch:
@@ -66,37 +67,53 @@ myrnorm <- function(mu,s2,sample.size) {
 set.seed(123)
 onedistrib <- t(replicate(100,myrnorm(1,1,10))) # toy example of simulated distribution
 attr(onedistrib,"par") <- c(mu=1,sigma=1,sample.size=10) ## important!
-simuls <- add_simulation(NULL, Simulate="myrnorm",
+simuls <- add_simulation(NULL, Simulate="myrnorm", nRealizations=500,
                          newsimuls=list("example"=onedistrib))
-                     
-## Example where a single Simulate returns all nRealizations:
-myrnorm_tab <- function(mu,s2,sample.size, nsim) {
-  replicate(nsim, 
-            myrnorm(mu=mu,s2=s2,sample.size=sample.size)) ## n_summ_stats * nReal 
-}
-op <- Infusion.options(nRealizations=c(as_one=500)) 
+
+# standard use: smulation over a grid of parameter values
 parsp <- init_grid(lower=c(mu=2.8,s2=0.2,sample.size=40),
                    upper=c(mu=5.2,s2=3,sample.size=40))
-simuls <- add_simulation(NULL,Simulate="myrnorm_tab",
-                         nsim=Infusion.getOption('nRealizations'),
-                         par.grid=parsp)
-Infusion.options(op)
+simuls <- add_simulation(NULL, Simulate="myrnorm", nRealizations=500,
+                         par.grid = parsp[1:7,])
+                         
+\dontrun{ # example continued: parallel versions of the same
+# Slow computations, notably because cluster setup is slow.
 
-\dontrun{
-# parallel version of the same:
-op <- Infusion.options(nb_cores=2, nRealizations=c(as_one=500))
-myrnorm_tab <- function(mu,s2,sample.size) {
-  ## By default, Infusion.getOption('nRealizations') will fail on child process!
-  replicate(1000,   
+#    ... parallel over replicates, serial over par.grid rows
+simuls <- add_simulation(NULL, Simulate="myrnorm", nRealizations=500,
+                         par.grid = parsp[1:7,], nb_cores=7)
+#    ... parallel over 'par.grid' rows
+simuls <- add_simulation(NULL, Simulate="myrnorm", nRealizations=500,
+                         par.grid = parsp[1:7,], nb_cores=c(foo=7))
+}
+                     
+####### Example where a single 'Simulate' returns all replicates:
+
+myrnorm_tab <- function(mu,s2,sample.size, nsim) {
+  ## By default, Infusion.getOption('nRealizations') would fail on nodes!
+  replicate(nsim, 
             myrnorm(mu=mu,s2=s2,sample.size=sample.size)) 
 }
+
+parsp <- init_grid(lower=c(mu=2.8,s2=0.2,sample.size=40),
+                   upper=c(mu=5.2,s2=3,sample.size=40))
+
+# 'as_one' syntax for 'Simulate' function returning a simulation table: 
+simuls <- add_simulation(NULL, Simulate="myrnorm_tab",
+              nRealizations=c(as_one=500),
+              nsim=500, # myrnorm_tab() argument, part of the 'dots'
+              par.grid=parsp)
+
+\dontrun{ # example continued: parallel versions of the same
+# Slow cluster setup again
 simuls <- add_simulation(NULL,Simulate="myrnorm_tab",par.grid=parsp,
-                         # need to export function called by Simulate:
-                         env=list2env(list(myrnorm=myrnorm)))
-Infusion.options(op)
+              nb_cores=7L,
+              nRealizations=c(as_one=500),
+              nsim=500, # myrnorm_tab() argument again
+              # need to export other variables used by *myrnorm_tab* to the nodes:
+              env=list2env(list(myrnorm=myrnorm)))
 }
 
 ## see main documentation page for the package for other typical usage
 }
-% Add one or more standard keywords, see file 'KEYWORDS' in the
-% R documentation directory.
+

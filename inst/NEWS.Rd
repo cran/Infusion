@@ -3,7 +3,46 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 1.4.0}{ 
+\section{CHANGES UP TO VERSION 1.5.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item New goftest() function, which may return a test of goodness of fit.
+\item Improved sampling of parameter space in refine().
+\item Several functions have a new argument 'cluster_args', passed to parallel::makeCluster(), for better control of the parallel computations. These functions' 'nb_cores' argument now acts as a shortcut for cluster_args$spec, in a backward-compatible way.
+\item add_reftable() results can be more easily subsetted thanks to a new '[' method.
+\item For better control of 1D profiles, plot1Dprof() gets new options for argument 'type', and new argument 'control'. 
+\item Refined use of function optimizers, which generally performs better than the previously used base optimizer (optim()). 
+\item plot.SLik_j(), plot1Dprof() and plot2Dprof() now re-run MSL(., eval_RMSEs=FALSE, CIs=FALSE) when they detect a new likelihood maximum, and discard pre-existing CI/RMSE information as these depend on the maximum. plot1Dprof() and plot2Dprof() now have a return value indicating whether MSL() was re-run.
+\item New extractor get_from() to extract elements from summary-likelihood objects in a backward-compatible way.
+\item Better control of verbosity in refine().
+\item Tenfold larger default 'knotNbr' for ranger() projection method than previously.
+\item New 'logLik' extractor.
+}
+}
+\subsection{DEPENDENCY CHANGES}{
+\itemize{
+\item 'Rmixmod', which had disappeared from the dependencies in recent versions, is back in Suggested packages.
+\item 'nloptr' and 'minqa' now used for optimization.
+\item 'crayon' added in Suggests, with no visible effects yet in standard use.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+%\item Both default value of global option 'nbCluster' and new precise meaning of this option. Results of all methods using Rmixmod (the default) are modified. 
+\item Default model for Gaussian mixture modelling changed.
+\item add_simulation() argument 'Simulate' can now be a function (rather than a name) and the return value's attr(.,"Simulate") is always the function rather than its name. 
+\item New Infusion.options "mixturing" (which replaces some previously undocumented options). 
+\item Slightly modified parameter sampling in refine(), so that all ensuing results will be slightly modified. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item add_simulation() could fail to pass the definition of 'Simulate' to child processes in parallel computations.
+\item project.default() could fail on one-dimensional statistics (a toy case).
+}
+}
+}
+\section{CHANGES UP TO VERSION 1.4.1}{ 
 \subsection{NEW FEATURES}{
 \itemize{
 \item Out-of-bag projections used whenever relevant in projections using random-forests methods (which definitely improves the results over "in-bag" projections).

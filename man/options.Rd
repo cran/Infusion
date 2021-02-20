@@ -20,6 +20,7 @@ Infusion.getOption(x)
     are used in \code{Infusion}:
 
   \describe{
+\item{\code{mixturing}}{character string: package or function to be used for mixture modelling. Recognized packages are \code{"Rmixmod"} (the default) and \code{"mclust"};   }
 \item{\code{projTrainingSize}:}{Expression for \code{trainingsize} argument of \code{\link{project.character}}. This is used only  for \code{REML} method of projection.}
 \item{\code{knotNbr}:}{Expression for \code{knotnbr} argument of \code{\link{project.character}}.}
 \item{\code{projKnotNbr = 1000}:}{default value of \code{knotnbr} argument of \code{\link{project.character}} for REML (as implied by default expression for \code{knotNbr}).}

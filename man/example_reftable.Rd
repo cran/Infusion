@@ -6,7 +6,7 @@
 Example of workflow with a reference table produced by \code{add_reftable}, possibly faster in many applications than the originally described method.
 }
 \examples{
-if ((Infusion.getOption("example_maxtime")>116)) {
+if ((Infusion.getOption("example_maxtime")>88)) {
   myrnorm <- function(mu,s2,sample.size) {
     s <- rnorm(n=sample.size,mean=mu,sd=sqrt(s2))
     return(c(mean=mean(s),var=var(s)))
@@ -41,11 +41,13 @@ if ((Infusion.getOption("example_maxtime")>116)) {
   densv <- infer_SLik_joint(corrSimuls,stat.obs=corrSobs)
   # Usual workflow using inferred surface:
   slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
-  slik_j <- refine(slik_j,maxit=5)
+  slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
   plot(slik_j)
   # etc:
   profile(slik_j,c(mu=4)) ## profile summary logL for given parameter value
   confint(slik_j,"mu") ## compute 1D confidence interval for given parameter
   plot1Dprof(slik_j,pars="s2",gridSteps=40) ## 1D profile
+  summary(slik_j) # or print()
+  logLik(slik_j)
 }
 }

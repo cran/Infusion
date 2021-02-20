@@ -1,4 +1,4 @@
-print("test Infusion.Rd long examples:")
+cat(crayon::yellow("test Infusion.Rd long examples:\n"))
 
 data(densv)
 data(myrnorm) # 'Test are run in an environment that inherits from the package's namespace environment'

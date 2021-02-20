@@ -19,11 +19,12 @@
             attr(surfaceData,"Simulate"), maxit = 1, n = NULL, 
             useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), 
             newsimuls = NULL, useCI = TRUE, level = 0.95, 
-            verbose = list(most=interactive(),movie=FALSE),
+            verbose = list(most=interactive(),final=NULL,movie=FALSE,proj=FALSE),
             precision = Infusion.getOption("precision"),
             nb_cores = NULL, packages=attr(object$logLs,"packages"), 
             env=attr(object$logLs,"env"), method, 
             eval_RMSEs=TRUE, update_projectors = FALSE,
+            cluster_args=list(),
             ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -41,7 +42,7 @@ A data.frame with attributes, usually taken from the \code{object} and thus \bol
   Maximum number of iterative refinements (see also \code{precision} argument)
 }
   \item{n}{
-A number of parameter points (excluding replicates and confidence interval points), which likelihood should be computed 
+A number of parameter points (excluding replicates and confidence interval points), whose likelihood should be computed 
 (see \code{n} argument of \code{\link{sample_volume}})   
 }
   \item{useEI}{
@@ -61,14 +62,14 @@ A number of parameter points (excluding replicates and confidence interval point
   \item{level}{
   Intended coverage of confidence intervals 
 }
-  \item{verbose}{ A list as shown by the default, or simply a vector of booleans, indicating respectively
-  whether to display (1) some information about progress and results; (2) a plot of a the likelihood surface, if a one- or two-parameters surface is inferred. \code{verbose$movie} controls whether such plots are produced for all iterations. \code{verbose$most} controls other verbosity, including whether a final plot is produced. 
+  \item{verbose}{ A list as shown by the default, or simply a vector of booleans. \code{verbose$most} controls whether to display information about progress and results, except plots; \code{$final} controls whether to \code{plot()} the final \code{object} to show the final likelihood surface. Default is to plot it only in an interactive session and if fewer than three parameters are estimated; \code{$movie} controls whether to \code{plot()} the updated \code{object} in each iteration; \code{verbose$proj} controls the \code{verbose} argument of \code{\link{project.character}}. If \code{verbose} is a vector of booleans, they are matched to as many elements from \code{"most","movie","final","proj"}, in that order. 
   }
   \item{precision}{
     Requested local precision of surface estimation, in terms of prediction standard errors (RMSEs) of both the maximum summary log-likelihood and the likelihood ratio at any CI bound available. Iterations will stop when either \code{maxit} is reached, or if the RMSEs have been computed for the object (see \code{eval_RMSEs} argument) and this precision is reached for the RMSEs.
     A given precision on the CI bounds themselves might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
   }
-  \item{nb_cores}{integer (possibly named, see \code{\link{add_simulation}}), passed to \code{add_simulation} and \code{infer_logLs}.}
+  \item{cluster_args}{A list of arguments, passed to \code{\link[parallel]{makeCluster}}. If thus affects parallel computations in the functions to which it may be passed: \code{add_simulation}, \code{MSL} (for bootstrap computations) or \code{infer_logLs}. It may contain a non-null \code{spec} element, in which case the distinct \code{nb_cores} argument of \code{refine} is ignored. If \code{spec} is a \bold{named} integer, it has an additional effect on \code{\link{add_simulation}}.}
+  \item{nb_cores}{Shortcut for \code{cluster_args$spec}.}
   \item{packages}{NULL or a list with possible elements \code{add_simulation} and \code{logL_method}, passed respectively as the \code{packages} arguments of \code{add_simulation} and \code{infer_logLs}, wherein they are the additional packages to be loaded on child processes. The default value keeps pre-\code{refine} values over iterations.}
   \item{env}{An environment, passed as the \code{env} argument to \code{add_simulation}. The default value keeps the pre-\code{refine} value over iterations.}
   \item{method}{(A vector of) suggested method(s) for estimation of smoothing parameters (see \code{method} argument of \code{\link{infer_surface}}). The ith element of the vector is
@@ -79,6 +80,9 @@ A number of parameter points (excluding replicates and confidence interval point
   \item{\dots}{
 further arguments passed to or from other methods. \code{refine} passes these arguments to the \code{plot} method suitable for the \code{object}. 
 }
+}
+\details{
+New parameter points are sampled as follows: the algorithm aims to sample uniformly the space of parameters contained in the confidence regions defined by the \code{level} argument, and to surround it by a region sampled proportionally to likelihood. In each iteration the algorithm aims to add as many points (say \emph{n}) as computed in the first iteration, so that after \emph{k} iterations of \code{refine}, there are \eqn{n * (k+1)} points in the simulation table. However, when not enough points satisfy certain criteria, only \emph{n/5} points may be added in an iteration, this being compensated in further iterations. For example, if \eqn{n=600}, the table may include only 720 points after the first refine, but 1800 after the second.
 }
 \value{
   An updated \code{SLik} or \code{SLik_j} object.

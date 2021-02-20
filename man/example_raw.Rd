@@ -23,7 +23,7 @@ Sobs <- myrnorm(mu=4,s2=1,sample.size=40) ## stands for the actual data to be an
 #
 ## (2) Generate, and simulate distributions for, 
 ##        an irregular grid of parameter values, with some replicates
-if (Infusion.getOption("example_maxtime")>45) {
+if (Infusion.getOption("example_maxtime")>40) {
   parsp <- init_grid(lower=c(mu=2.8,s2=0.2,sample.size=40),
                      upper=c(mu=5.2,s2=3,sample.size=40))
   simuls <- add_simulation(NULL,Simulate="myrnorm",par.grid=parsp)
@@ -38,7 +38,7 @@ if (Infusion.getOption("example_maxtime")>45) {
 #
 ## (4) infer a log-likelihood surface and its maximum;
 ##       plot and extract various information. 
-if (Infusion.getOption("example_maxtime")>17) {
+if (Infusion.getOption("example_maxtime")>11) {
  slik <- infer_surface(densv)
  slik <- MSL(slik) ## find the maximum of the log-likelihood surface
  plot(slik)
@@ -48,7 +48,7 @@ if (Infusion.getOption("example_maxtime")>17) {
 }
 #
 ## (5) ## refine iteratively
-if (Infusion.getOption("example_maxtime")>68) {
+if (Infusion.getOption("example_maxtime")>39) {
  slik <- refine(slik) 
 }
 }

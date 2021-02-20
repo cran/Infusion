@@ -1,4 +1,4 @@
-print("test reftable:")
+cat(crayon::yellow("test reftable:\n"))
 
 myrnorm <- function(mu,s2,sample.size) {
   s <- rnorm(n=sample.size,mean=mu,sd=sqrt(s2))
@@ -7,14 +7,14 @@ myrnorm <- function(mu,s2,sample.size) {
 set.seed(123)
 # pseudo-sample with stands for the actual data to be analyzed:  
 ssize <- 40
-Sobs <- myrnorm(mu=4,s2=1,sample.size=ssize) 
+(Sobs <- myrnorm(mu=4,s2=1,sample.size=ssize) )
 # Uniform sampling in parameter space:
 npoints <- 600
 parsp <- data.frame(mu=runif(npoints,min=2.8,max=5.2),
                     s2=runif(npoints,min=0.4,max=2.4),sample.size=ssize)
 # Build simulation table:
+# set.seed(456) # this shows the considerable impact of the first reftable...
 simuls <- add_reftable(Simulate="myrnorm",par.grid=parsp)
-str(simuls)
 
 ## trivial projections which should produce an y=x regression:
 #mufit <- project("mu",stats=c("mean","var"),data=simuls, method="randomForest")
@@ -40,7 +40,7 @@ densv <- infer_SLik_joint(corrSimuls,stat.obs=corrSobs)
 # Usual workflow using inferred surface:
 slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
 #slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
-slik_j <- refine(slik_j,maxit=5)
+slik_j <- refine(slik_j,maxit=5,update_projectors=TRUE)
 plot(slik_j)
 # etc:
 profile(slik_j,c(mu=4)) ## profile summary logL for given parameter value
@@ -87,3 +87,24 @@ if (FALSE) { # example of reprojecting accumulated simulations
   plot(reslik_j)
 }
 
+if (FALSE) { # 1-parameter example
+  parsp1 <- data.frame(mu=4,
+                      s2=runif(npoints,min=0.4,max=2.4),sample.size=ssize)
+  # Build simulation table:
+  simuls1 <- add_reftable(Simulate="myrnorm",par.grid=parsp1)
+  s2fit1 <- project("s2",stats=c("mean","var"),data=simuls1)
+  ## apply projections on simulated statistics
+  projectors1 <- list("VAR"=s2fit1)
+  projectors1 <- list2env(projectors1)
+  corrSobs1 <- project(Sobs,projectors=projectors1)
+  corrSimuls1 <- project(simuls1,projectors=projectors1)
+  # Infer surface:
+  densv1 <- infer_SLik_joint(corrSimuls1,stat.obs=corrSobs1)
+  # Usual workflow using inferred surface:
+  slik_j1 <- MSL(densv1) ## find the maximum of the log-likelihood surface
+  slik_j1 <- refine(slik_j1,maxit=5, update_projectors=TRUE)
+  plot(slik_j1)
+  # etc:
+  confint(slik_j1,"s2") ## compute 1D confidence interval for given parameter
+  plot1Dprof(slik_j1,pars="s2",gridSteps=40) ## 1D profile
+}

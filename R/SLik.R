@@ -7,29 +7,34 @@ refine.SLik <- function(object,method=NULL,...) {
   refine.default(object,surfaceData=object$logLs,method=method,...)
 }
 
-print.SLik <-function(x,...) {summary.SLik(x,...)}
-
 # options("digits") controls digits in print()
 ## 3 digits on RMSEs makes a lot of digits overall   
-`summary.SLik` <- function(object, ...) { 
+summary.SLik <- function(object, ...) { 
   if ( !is.null(object$MSL) ) {
     cat(paste("*** Summary ML (",max(object$logLs$cumul_iter)," iterations, ",nrow(object$logLs)," points): ***\n",sep=""))
-    print(c(object$MSL$MSLE,"logL"=object$MSL$maxlogL,"RMSE_logL"=unname(object$RMSEs[1L])))
-    #
-    if( ! is.null(CIobject <- object$par_RMSEs))  {
-      cat("*** Interval estimates and RMSEs ***\n")
-      print(object$par_RMSEs)
-    } else if ( ! is.null(object$pars)) {
-      cat("*** Interval estimates ***\n")
-      print(object$pars)
-    } 
+    print(c(object$MSL$MSLE,"logL"=object$MSL$maxlogL,"RMSE_logL"=unname(get_from(object,"RMSEs")[1L])))
+    # # par_RMSEs
+    if ( ! is.null(object$CIobject))  {
+      if( ! is.null(object$par_RMSEs))  { # more complete object, supersede CIobject which was used to construct it
+        if (is.null(wrn <- object$par_RMSEs$warn)) {      
+          cat("*** Interval estimates and RMSEs ***\n")
+          print(get_from(object,"par_RMSEs"))
+        } else message(wrn)
+      } else if (is.null(CIwrn <- object$CIobject$warn)) {      
+        bounds <- .extract_intervals(object,verbose=FALSE) 
+        if (length(bounds)) {
+          cat("*** Interval estimates ***\n")
+          print(bounds)
+        }
+      } else message(CIwrn)
+    }  
   } else {
     cat("SLik object created. Use MSL(.) to obtain point estimates and CIs.\n")
   }
   invisible(object)
 }
 
-`summary.SLik_j` <- function(object,...) summary.SLik(object=object,...)
+print.SLik <- function(x,...) {summary.SLik(x,...)}
 
 calc.lrthreshold.SLik <- function(object,dlr=NULL,verbose=interactive(),...) {
   if (is.null(dlr)) dlr <- Infusion.getOption("LRthreshold") # (<0)

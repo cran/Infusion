@@ -1,0 +1,44 @@
+cat(crayon::yellow("test likelihood with narrow peak among local maxima:\n"))
+
+# Example from Wilkinson's ABC tutorial
+# Where Infusion.options(mixmodGaussianModel) matters... 
+nips <- function(theta) {
+  s <- rnorm(n=1,mean=2*theta*(theta+2)*(theta-2),sd=sqrt(0.1+theta^2))
+  return(c(D=s))
+}
+
+lik <- function(theta) dnorm(x=2,mean=2*theta*(theta+2)*(theta-2),sd=sqrt(0.1+theta^2),log=FALSE)
+liks <- sapply(seqx <- seq(-4,4,0.001),lik)
+
+
+set.seed(123)
+Dobs <- c(D=2) ## stands for the actual data to be analyzed
+
+npoints <- 300
+parsp <- data.frame(theta=runif(npoints,min=-4,max=4))
+simuls <- add_reftable(Simulate=nips,par.grid=parsp)
+#
+# library(abcrf)
+# rfabc <- regAbcrf(theta~D, simuls)
+# densityPlot(rfabc, data.frame(D=2), simuls)
+# predict(rfabc,obs=data.frame(D=2), training=simuls)
+#
+densv <- infer_SLik_joint(simuls,stat.obs=Dobs)
+currMSL <- MSL(densv) ## find the maximum of the log-likelihood surface
+plot(currMSL); lines(seqx,liks/max(liks),col="red") # add true likelihood
+currMSL <- refine(currMSL,maxit=5) ## bad estimate due to bad clustering: 
+if (inherits(currMSL$jointdens, "dMixmod")) plot(currMSL$jointdens, data=currMSL$logLs) ## is revealing. Several more iterations are needed:
+currMSL <- refine(currMSL,maxit=5) 
+plot(currMSL); lines(seqx,liks/max(liks),col="red") # better
+if (inherits(currMSL$jointdens, "dMixmod")) plot(currMSL$jointdens, data=currMSL$logLs) ## better
+
+if (FALSE) { # when projections are bad
+  bigparsp <- data.frame(theta=runif(3000,min=-4,max=4))
+  bigsimuls <- add_reftable(Simulate="nips",par.grid=bigparsp)
+  prth <- project("theta", stats="D",data=bigsimuls)
+  prDobs <- project(Dobs,projectors=list(PRTH=prth))
+  prsimuls <- project(bigsimuls,projectors=list(PRTH=prth))
+  densv <- infer_SLik_joint(prsimuls,stat.obs=prDobs)
+  slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
+  plot(slik_j)
+}

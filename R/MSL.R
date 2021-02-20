@@ -42,9 +42,9 @@
 
 # creates <slik>$par_RMSEs 
 .par_RMSEwrapper <- function(object,verbose=interactive()) {
-  RMSEs <- object$RMSEs
-  if( (lenRMSEs <- length(RMSEs))>1L)  {
-    CIs <- object$CIobject$CIs
+  RMSEs <- object$RMSEs$RMSEs
+  CIs <- object$CIobject$CIs
+  if (( ! is.null(CIs)) && (lenRMSEs <- length(RMSEs))>1L)  {
     pars <- names(CIs)
     par_RMSEs <- rep(NA,lenRMSEs-1L) ## (over)size as the MSEs have no NAs
     par_ests <- rep(NA,lenRMSEs-1L) ## (over)size as the MSEs have no NAs
@@ -75,63 +75,12 @@
   } else return(NULL)
 }
 
-.par_wrapper <- function(object,verbose=interactive()) {
-  CIs <- object$CIobject$CIs
-  lenCIs <- length(CIs)    
-  pars <- names(CIs)
-  resu <- rep(NA_real_,NROW(object$CIobject$bounds)) ## (over)size as the MSEs have no NAs
-  names(resu) <- rownames(object$CIobject$bounds)
-  map <- c(low=1L,up=2L)
-  for (nam in rownames(object$CIobject$bounds)) {
-    stterms <- regmatches(nam, regexpr("\\.", nam), invert = TRUE)[[1]] ## regmatches(<...>) splits at the first '.'
-    parm <- stterms[2L]
-    interval <- CIs[[parm]]$interval
-    th <- interval[map[stterms[1L]]]
-    resu[nam] <- th
-  }
-  if (verbose && length(resu)>0L) {
-    par_headline <- "*** Interval estimates ***\n"
-    cat(par_headline)
-    print(resu)
-    return(invisible(resu))
-  } else return(resu)
-}
-
-## summary likelihood ratio (with uncertainty measures) extractor. Unfinished, in particular, need to separate residVar an to handle prior.weights
-.SLR <- function(object,newdata=NULL,variance="predVar",df=NULL) {
-  fittedPars <- object$colTypes$fittedPars
-  if (is.null(newdata)) newdata <- unique(object$logLs[,fittedPars])
-  locdata <- rbind(MSLE=object$MSL$MSLE, ## name needed for spaMM::calcNewCorrs -> newuniqueGeo
-                   newdata)
-  if (variance=="respVar") {
-    logls <- predict(object$fit,newdata=locdata,variances=list(respVar=TRUE,cov=TRUE))
-    covmat <- attr(logls,"respVar")
-    # but problem with prior weights
-  } else {
-    logls <- predict(object$fit,newdata=locdata,variances=list(linPred=TRUE,dispVar=TRUE,cov=TRUE))
-    covmat <- attr(logls,"predVar")
-  }
-  slr <- object$MSL$maxlogL -logls[]
-  MSEs <- c(diag(covmat[-1,-1,drop=FALSE])+covmat[1,1]-2*covmat[1,-1])
-  if ( any(MSEs<0) ) {
-    message("Inaccurate MSE computation, presumably from nearly-singular covariance matrices.")
-    MSEs[MSEs<0] <- NA ## quick patch
-  }
-  RMSEs <- sqrt(MSEs)
-  resu <- rbind(LRstat=2*slr[-1],RMSE=RMSEs)
-  if (!is.null(df)) {
-    resu <- rbind(resu,p_RMSE=RMSEs*dchisq(resu["LRstat",],df=df))
-  }
-  return(resu)
-}
-
-#.SLR(slik)
 
 # both SLik and SLikp, with different methods used in -> allCIs -> confint
 MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
                  eval_RMSEs=TRUE, #inherits(object,"SLik"), 
+                 cluster_args=list(),
                  ...) { ##
-  # Maximization ## revised 13/07/2016
   fittedPars <- object$colTypes$fittedPars
   if (inherits(object,"SLik")) {
     vertices <- object$fit$data[,fittedPars,drop=FALSE]
@@ -143,33 +92,59 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
     lower <- object$lower
     upper <- object$upper
   }
-  # (a constrOptim woul be even better)
-  stat.obs <- object$stat.obs
-  # coeffs <- object$coeffs
+  # (a constrOptim would be even better)
   parscale <- (upper-lower) 
-  if ( is.null(init <- object$optrEDF$par)) { ## ...if inherits(object,"SLik_j")
-    # SLik object:
+  if (inherits(object,"SLik_j")) {
+    pred_data <- object$logLs[,fittedPars, drop=FALSE]
+    if (is.null(object$thr_dpar)) {
+      pardensv <- predict(object,newdata = pred_data, which="parvaldens")
+      object$thr_dpar <- min(max(pardensv)- qchisq(1-(1-level)/2,df=1)/2 , ## __F I X M E__ rethink
+                             quantile(pardensv,probs=1/sqrt(length(pardensv)))
+      )
+      #print(object$thr_dpar)
+    } 
+    predsafe <- predict(object,newdata=pred_data, which="safe") 
+    init <- unlist(pred_data[which.max(predsafe), ])
+  } else {
     init <- unlist(object$obspred[which.max(object$obspred[,attr(object$obspred,"fittedName")]),fittedPars]) 
     init <- init*0.999+ colMeans(vertices)*0.001
   }
-  method <- "L-BFGS-B" ## works also in 1Dand does not ignore the init value (while Brent would)
+  prev_init <- object$MSL$init_from_prof ## provided by plot1Dprof() -> profil(). 
+  ## prev_init is not NULL if MSL called by .MSL_update() or by [refine() after a plot], but then object$MSL$MSLE should not be used ;
+  ## in other calls by refine(), the object is being reconstructed from scratch, and then object$MSL$MSLE is NULL too ;
+  ## in neither case the next line is useful
+  # if (is.null(prev_init)) prev_init <- object$MSL$MSLE 
+  ##   which="safe" is effective only for SLik_j objects. Otherwise, it is ignored.
+  if ( (! is.null(prev_init)) &&
+    predict(object,newdata=prev_init, which="safe") > predict(object,newdata=init, which="safe")) {init <- prev_init}
   time1 <- Sys.time()
-  msl <- optim(init, function(v) {as.numeric(predict(object,newdata=v))},
-               ## as numeric because otherwise in 1D, optim -> minimize -> returns a max 
-               ##   of same type as predict(object$fit,newdata=v), i.e. matrix... 
-               ## FR->FR with spaMM>1.7.12, predict(object,newdata=v)[] should be OK  
-               lower=lower,upper=upper,control=list(fnscale=-1,parscale=parscale),method=method)
+  msl <- .safe_opt(init, objfn=function(v) { - predict(object,newdata=v, which="safe")}, 
+                   lower=lower,upper=upper, LowUp=list(), verbose=FALSE)
+  msl$value <- - msl$objective 
+  msl$par <- msl$solution
   optim_time <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1) ## spaMM:::.timerraw(time1)
-  if (inherits(object,"SLik") && length(fittedPars)>1L) {
+  if (inherits(object,"SLik") && length(fittedPars)>1L) { # for SLik_j objects, this should not be run
     locchull <- resetCHull(vertices, formats=c("constraints"))
     if( ! (isPointInCHull(msl$par, constraints=locchull[c("a", "b")]))) { ## if simple optim result not in convex hull
+      # this block can be tested by test-3par, with mixmodGaussianModel="Gaussian_pk_Lk_Ck"
       ui <- -locchull$a
       ci <- -locchull$b
-      objectivefn <- function(v) {as.numeric(predict(object,newdata=v))}
+      candttes_in_hull <- 0.99*vertices + 0.01*colMeans(vertices)
+      best_candidate <- unlist(candttes_in_hull[which.max(predict(object,newdata=candttes_in_hull, which="safe")),])
+      objectivefn <- function(v) { - as.numeric(predict(object,newdata=v, which="safe"))}
       objectivefn.grad <- function(x) {grad(func=objectivefn, x=x)} ## no need to specify fixedlist here
-      msl <- constrOptim(theta=init,f=objectivefn,grad=objectivefn.grad, ui=ui, ci=ci , 
-                         mu=1e-08, ## a low mu appear important
-                         method = "BFGS",control=list(fnscale=-1,parscale=parscale))
+      if (TRUE || .Infusion.data$options$constrOptim) {
+        msl <- constrOptim(theta=best_candidate,f=objectivefn,grad=objectivefn.grad, ui=ui, ci=ci , 
+                           mu=1e-08, ## a low mu appear important
+                           method = "BFGS",control=list(parscale=parscale))
+        msl$value <- - msl$value
+      } else { ## more or less works, but the result is not as accurate as by constrOptim. Presumably related to the  method used, with bound constraints.
+        msl <- .safe_constrOptim(theta=best_candidate,f=objectivefn,grad=objectivefn.grad, ui=ui, ci=ci , 
+                                 lower=lower,upper=upper,
+                           mu=1e-08)
+        msl$value <- - msl$objective
+        msl$par <- msl$solution
+      }
       ## then we will optimize in the convex hull using constroptim(R). But we need a good starting point
     }
   }
@@ -185,46 +160,49 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
       print(c(msl$par,"tailp"=msl$value))
     }
   }
-  object$MSL$MSLE <- msl$par
-  if (length(lower)==1) names(object$MSL$MSLE) <- names(lower)
-  object$MSL$maxlogL <- msl$value
+  if (length(lower)==1) names(msl$par) <- names(lower)
+  object$MSL <- list2env(list(MSLE=msl$par, maxlogL=msl$value))
   if (inherits(object$fit,"HLfit")) object$MSL$predVar <- attr(predict(object,newdata=msl$par,variances=list(linPred=TRUE,dispVar=TRUE)),"predVar")
   # CIs
+  prevmsglength <- 0L
   if(CIs) {
     locverbose <- (verbose && ! inherits(object$fit,"HLfit")## for HLfit object, printing is later
                    && optim_time>3) # guess when it is useful to be verbose from the time to find the maximum 
     if (locverbose) {
       prevmsglength <- .overcat("Computing confidence intervals...\n", 0L) 
-    } else {
-      prevmsglength <- 0L
-    }
-    object$CIobject <- .allCIs(object,verbose=locverbose, level=level)  ## may be NULL
-  } else object$CIobject <- NULL
+    } 
+    object$CIobject <- list2env(.allCIs(object,verbose=locverbose, level=level))  ## may be NULL
+  } 
   # MSEs computation
   if (inherits(object$fit,"HLfit")) {
-    object$RMSEs <- .RMSEwrapper(object,verbose=FALSE)
+    object$RMSEs <- list2env(list(RMSEs=.RMSEwrapper(object,verbose=FALSE),
+                                  warn=NULL))
   } else {
     if (eval_RMSEs) {
       if  (verbose) .overcat("Computing RMSEs... (may be slow)\n",prevmsglength)
-      object$RMSEs <- .RMSEwrapper.SLik_j(object,verbose=FALSE)
-    } else {
-      object$pars <- .par_wrapper(object,verbose=FALSE) ## quick patch b/c no RMSEs
+      object$RMSEs <- list2env(list(RMSEs=.RMSEwrapper.SLik_j(object,cluster_args=cluster_args,verbose=FALSE),
+                                    warn=NULL))
     } 
   }
-  object$par_RMSEs <- .par_RMSEwrapper(object,verbose=FALSE)
+  # needs $CIobject information and $RMSEs information:
+  object$par_RMSEs <- list2env(list(par_RMSEs=.par_RMSEwrapper(object,verbose=FALSE)))
   if  (verbose) {
-    if ( ! is.null(object$par_RMSEs)) {
+    if ( ! is.null(object$par_RMSEs$par_RMSEs)) {
       .overcat("*** Interval estimates and RMSEs ***\n",prevmsglength)
-      print(object$par_RMSEs)
+      print(object$par_RMSEs$par_RMSEs)
     } else {
-      .overcat("*** Interval estimates ***\n",prevmsglength)
-      print(object$pars)
+      bounds <- .extract_intervals(object,verbose=FALSE) 
+      if (length(bounds)) {
+        .overcat("*** Interval estimates ***\n",prevmsglength)
+        print(bounds)
+      }
     }
   }
   if (is.null(object$logLs$cumul_iter)) {
     object$logLs$cumul_iter <- 1L ## adds a column to the data frame
     attr(object$logLs,"n_first_iter") <- nrow(object$logLs)
   }
+  object$`Infusion.version` <- packageVersion("Infusion")
   invisible(object)
 }
 

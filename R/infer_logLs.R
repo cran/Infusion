@@ -115,11 +115,11 @@ infer_logLs <- function(object,
                         logLname=Infusion.getOption("logLname"), 
                         verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                      final=FALSE),  
-                        method=Infusion.getOption("infer_logL_method"),
+                        method=Infusion.getOption("mixturing"),
                         nb_cores=NULL,
                         packages=NULL,
-#                        fittedPars=NULL,
-                        ... ## required because if generic includes them...
+                        cluster_args=list(),
+                        ... # currrently not used
 ) {
   if (is.data.frame(object)) {
     stop(paste0("'object' is a data.frame, not a list of matrices.\n ",
@@ -135,12 +135,15 @@ infer_logLs <- function(object,
   if (is.null(names(verbose))) names(verbose) <- c("most","final")[seq_len(length(verbose))]
   if (is.null(verbose$most)) verbose$most <- interactive()
   if (is.null(verbose$final)) verbose$final <- FALSE
+  if (method=="mclust") method <- "infer_logL_by_mclust"
+  if (method=="Rmixmod") method <- "infer_logL_by_Rmixmod"
   allPars <- names(attr(object[[1]],"par"))
   object <- .check_logLs_input(object)
-  Sobs.densities <- vector("list", length(object)) #matrix(NA,nrow=NROW(parGrid),ncol=4L) ## FR: doit être pré- déclarée, si j'en crois mon code...
+  Sobs.densities <- vector("list", length(object)) 
   method_arglist <- list(stat.obs=stat.obs,logLname=logLname,verbose=verbose)
   #
-  cores_info <- .init_cores(nb_cores, ...)
+  if (is.null(cluster_args$spec)) cluster_args$spec <- nb_cores # which means that cluster_args$spec overrides nb_cores
+  cores_info <- .init_cores(cluster_args) ###### , ...)
   # make sure that a user-defined nondefault method is converted to a string: 
   if ( ! is.null(cores_info$cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 
   if (method=="infer_logL_by_mclust") packages <- c(packages,"mclust")

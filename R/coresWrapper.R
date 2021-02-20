@@ -27,14 +27,13 @@
 
 .init_cores <- local({
   doSNOW_warned <- FALSE
-  function(nb_cores=NULL, ## passing explicit value from user
-           ...) {  ## ... are arguments used by functions called by the loc_calc_logL function
-    nb_cores <- .check_nb_cores(nb_cores=nb_cores)
-    cores_info <- list(nb_cores=nb_cores)
-    if (nb_cores > 1L) {
-      cores_info$cl <- parallel::makeCluster(nb_cores) 
-      dotenv <- list2env(list(...))
-      parallel::clusterExport(cl=cores_info$cl, as.list(ls(dotenv)),envir=dotenv) 
+  function(cluster_args=list()) { 
+    cluster_args$spec <- .check_nb_cores(nb_cores=cluster_args$spec) # if cluster_args was NULL it is converted to list here => no need for special handling code.
+    cores_info <- list(nb_cores=cluster_args$spec)
+    if (cluster_args$spec > 1L) {
+      cores_info$cl <- do.call(parallel::makeCluster, cluster_args) 
+      #dotenv <- list2env(list(...))
+      #parallel::clusterExport(cl=cores_info$cl, as.list(ls(dotenv)),envir=dotenv) 
       ## foreach is NOT a parallel backend so there is no point using it if doSNOW is not available
       if (cores_info$has_doSNOW <- (isNamespaceLoaded("doSNOW"))) {
         R.seed <- get(".Random.seed", envir = .GlobalEnv)
@@ -61,15 +60,15 @@
     #blackboxOptions <- blackbox.options() ## FIXME: none of the package options are passed to the child processed
     #InfusionOptions <- Infusion.options()
     packages <- c("Infusion","blackbox",packages)
-    parallel::clusterExport(cores_info$cl, list(method),envir=environment()) ## passes useks
-    parallel::clusterExport(cores_info$cl, list("packages"),envir=environment()) ## passes the list of packages to load
+    parallel::clusterExport(cores_info$cl, method,envir=environment()) ## passes useks
+    parallel::clusterExport(cores_info$cl, "packages",envir=environment()) ## passes the list of packages to load
     abyss <- parallel::clusterEvalQ(cores_info$cl, {sapply(packages,library,character.only=TRUE)}) ## snif
     if (cores_info$has_doSNOW) {
       show_pb <- (verbose$most && ! isTRUE(getOption('knitr.in.progress')))
       if (show_pb) {
         pb <- txtProgressBar(max = length(object), style = 3, char="P")
         progress <- function(n) setTxtProgressBar(pb, n)
-        parallel::clusterExport(cl=cores_info$cl, list("progress"),envir=environment()) ## slow! why?
+        parallel::clusterExport(cl=cores_info$cl, "progress",envir=environment()) ## slow! why?
         .options.snow = list(progress = progress)
       } else .options.snow = NULL
       ii <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'ii'

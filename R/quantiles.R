@@ -47,7 +47,7 @@ infer_tailp <- function(object, ## object is a list of EDFs
                             refDensity,
                             stat.obs,
                             tailNames=Infusion.getOption("tailNames"), 
-                            verbose=interactive(), method=NULL,
+                            verbose=interactive(), method=NULL, cluster_args, 
                             ... ## required because if generic includes them...
 ) {
   
@@ -198,15 +198,22 @@ print.SLikp <-function(x,...) {summary(x)} ## indeed summarizes the list... unle
     print(c(object$MSL$MSLE,"tailp"=object$MSL$maxlogL))
     #
     if( ! is.null(CIobject <- object$CIobject))  {
-      cat("*** Confidence intervals: ***\n")
-      cis <- lapply(CIobject$CIs,function(lt) {lt$interval})
-      print(cis)
-      locst <-  "*** RMSEs of MaxSumm-tail p and of MSQ for CIs: ***\n"
+      if (is.null(wrn <- object$CIobject$warn)) {
+        cat("*** Confidence intervals: ***\n")
+        cis <- lapply(CIobject$CIs,function(lt) {lt$interval})
+        print(cis)
+        locst <-  "*** RMSEs of MaxSumm-tail p and of MSQ for CIs: ***\n"
+      } else {
+        message(wrn)
+        locst <-  "*** RMSE of MaxSumm-tail p: ***\n"    
+      }
     } else {
       locst <-  "*** RMSE of MaxSumm-tail p: ***\n"    
     }
     cat(locst)
-    print(object$RMSEs)
+    if (is.null(wrn <- object$RMSEs$warn)) {
+      print(get_from(object,"RMSEs"))
+    } else message(wrn)
   } else {
     cat("SLikp object created. Use MSL(.) to obtain point estimates and CIs.\n")
   }

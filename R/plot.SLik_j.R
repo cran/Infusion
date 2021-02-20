@@ -5,15 +5,16 @@
   grid_args$values <- object$logLs[,xyvars[2L]]
   grillelist[[xyvars[2L]]] <- do.call(".gridfn",grid_args) 
   grille <- expand.grid(grillelist) 
-  z <- predict(object, grille)
+  z <- predict(object, grille, which="safe")
   z <- exp(z-object$MSL$maxlogL)
   xyz <- as.surface(grillelist, z, order.variables = "xy")
   varVals <- object$MSL$MSLE[xyvars]
+  has_CI_info <- ( ( ! is.null(object$CIobject)) && is.null(object$CIobject$warn))
   plot.axes <- quote({
     if (!is.null(object$latestPoints)) points(object$logLs[object$latestPoints,xyvars],pch=".",cex=2);
     points(varVals[xyz$xlab],varVals[xyz$ylab],pch="+",cex=1.5) 
-    if (!is.null(object$CIobject)) points(object$CIobject$bounds,pch=19,col="red",cex=1.50);
-    if (!is.null(object$CIobject)) points(object$CIobject$bounds,pch=20,col="white",cex=0.75);
+    if (has_CI_info) points(object$CIobject$bounds,pch=19,col="red",cex=1.50);
+    if (has_CI_info) points(object$CIobject$bounds,pch=20,col="white",cex=0.75);
     points(t(object$MSL$MSLE),pch=19,cex=1.50,col="cyan");
     points(t(object$MSL$MSLE),pch=20,cex=0.75,col="white");
     contour(x=grillelist[[xyvars[1L]]],y=grillelist[[xyvars[2L]]],
@@ -38,7 +39,7 @@
 
 plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                        color.palette = NULL, plot.axes = NULL, 
-                       plot.title = NULL, ...) {
+                       plot.title = NULL, from_refine=FALSE, ...) {
   object <- x
   fittedPars <- object$colTypes$fittedPars
   maxlogL <- object$MSL$maxlogL
@@ -47,14 +48,18 @@ plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
   np <- length(fittedPars)
   if (np==1L) {
     x <- object$logLs[,fittedPars,drop=FALSE]
-    y <- Ztransf(predict(object,newdata=x)) ## <>1
+    profy <- predict(object,newdata=x, which="safe")
+    maxprofy <- max(profy)
+    if (maxprofy>maxlogL) object$MSL$init_from_prof <- maxlogL <- maxprofy
+    y <- exp(profy-maxlogL) ## 
     ylim <- max(1,y)
     if (is.infinite(ylim)) {ylim <- NULL} else {ylim <- c(0,ylim)}
     plot(x[,1],y,main="Summary Likelihood Ratio",xlab=fittedPars,ylab="SL ratio",
          xlim=range(x),
          ylim=ylim)
     points(object$MSL$MSLE,1,pch="+")
-    if (!is.null(object$CIobject)) {
+    has_CI_info <- ( ( ! is.null(object$CIobject)) && is.null(object$CIobject$warn))
+    if (has_CI_info) {
       yci <- rep(exp(-qchisq(0.95,1)/2),NROW(object$CIobject$bounds))
       points(object$CIobject$bounds,y=yci,pch="+")
     }
@@ -68,7 +73,10 @@ plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
         points(t(object$MSL$MSLE),pch="+",cex=2);
         decorations}) ## language object
       xy <- object$logLs[,fittedPars]
-      spaMMplot2D(x=xy[,1],y=xy[,2],z=Ztransf(predict(object,newdata=xy)),
+      profz <- predict(object,newdata=xy, which="safe")
+      maxprofz <- max(profz)
+      if (maxprofz>maxlogL) object$MSL$init_from_prof <- maxlogL <- maxprofz
+      spaMMplot2D(x=xy[,1],y=xy[,2],z=exp(profz-maxlogL),
                   color.palette=function(n){spaMM.colors(50,redshift=3)},nlevels=50,
                   plot.title=title(main="Summary-likelihood-ratio surface",
                                          xlab=fittedPars[1],ylab=fittedPars[2]),
@@ -76,5 +84,6 @@ plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
                   ...)
     }
   } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
+  if ( (! is.null(object$MSL$init_from_prof)) && (! from_refine) ) .MSL_update(object)
   invisible(object)
 }

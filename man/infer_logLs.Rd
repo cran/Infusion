@@ -16,12 +16,12 @@ infer_logLs(object, stat.obs,
             logLname = Infusion.getOption("logLname"), 
             verbose = list(most=interactive(), 
                            final=FALSE), 
-            method = Infusion.getOption("infer_logL_method"),
-            nb_cores = NULL, packages = NULL,
+            method = Infusion.getOption("mixturing"),
+            nb_cores = NULL, packages = NULL, cluster_args,
             ...)
 infer_tailp(object, refDensity, stat.obs,
                 tailNames=Infusion.getOption("tailNames"),
-                verbose=interactive(), method=NULL,...)
+                verbose=interactive(), method=NULL, cluster_args, ...)
 infer_logL_by_GLMM(EDF,stat.obs,logLname,verbose)
 infer_logL_by_Rmixmod(EDF,stat.obs,logLname,verbose)
 infer_logL_by_mclust(EDF,stat.obs,logLname,verbose)
@@ -54,7 +54,7 @@ infer_logL_by_Hlscv.diag(EDF,stat.obs,logLname,verbose)
   A function for density estimation. See Description for the default behaviour and Details for the constraints on input and output of the function. 
 }
   \item{nb_cores}{Number of cores for parallel computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
-  
+ \item{cluster_args}{A list of arguments, passed to \code{\link[parallel]{makeCluster}}. May contain a non-null \code{spec} element, in which case the distinct \code{nb_cores} argument is ignored.}
   \item{packages}{For parallel evaluation: Names of additional libraries to be loaded on the cores, necessary for evaluation of a user-defined 'method'.}
   
   \item{\dots}{

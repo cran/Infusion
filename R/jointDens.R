@@ -32,14 +32,16 @@
   return(margdens)
 }
 
-.conditional_Rmixmod <- function(jointdens, fittedPars, given, expansion=Infusion.getOption("expansion")) {
+.conditional_Rmixmod <- function(jointdens, #fittedPars, 
+                                 given, expansion=Infusion.getOption("expansion")) {
   nbCluster <- jointdens@nbCluster
   conddens <- jointdens
   MEAN <- conddens@parameters@mean
   givenNames <- names(given)
-  colnames(MEAN) <- colNames <- c(fittedPars, givenNames)
-  For <- fittedPars 
+  colnames(MEAN) <- colNames <- jointdens@varNames
+  For <- setdiff(colNames,givenNames) 
   conddens@parameters@mean <- MEAN[,For,drop=FALSE] # resizes, but will be modified
+  condprop <- conddens@parameters@proportions
   for (clu_it in seq_len(nbCluster)) {
     COV <- conddens@parameters@variance[[clu_it]]
     colnames(COV) <- rownames(COV) <- colNames
@@ -49,7 +51,11 @@
     conddens@parameters@mean[clu_it,] <- MEAN[clu_it,For] + sig12 %*% solve(sig22,given-mean2)
     sig11 <- COV[For,For,drop=FALSE]
     conddens@parameters@variance[[clu_it]] <- expansion* (sig11 - sig12 %*% solve(sig22,t(sig12))) 
+    condprop[clu_it] <- condprop[clu_it]*dmvnorm(t(given), # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
+                                                 mean2, sigma= sig22, log=FALSE)
   }
+  condprop <- condprop/sum(condprop)
+  conddens@parameters@proportions <- condprop
   conddens@varNames <- For
   conddens@simuls_activeBoundaries <- NULL
   #margdens_fP@criterionValue <- margdens_fP@likelihood <- "removed for safety"  
@@ -67,6 +73,7 @@
   colNames <- c(fittedPars, givenNames)
   conddens$parameters$mean <- MEAN[For,,drop=FALSE] # resizes, but will be modified
   sigma11 <- conddens$parameters$variance$sigma[For,For,,drop=FALSE] # resizes, but will be modified
+  condprop <- conddens$parameters$pro
   for (clu_it in seq_len(nbCluster)) {
     sigma_it <- conddens$parameters$variance$sigma[,,clu_it] # from single array for all clusters # drops the clu_it dimension
     sig22 <-  sigma_it[givenNames,givenNames]
@@ -74,7 +81,10 @@
     mean2 <- MEAN[givenNames,clu_it]
     conddens$parameters$mean[,clu_it] <- MEAN[For,clu_it] + sig12 %*% solve(sig22,given-mean2)
     sigma11[,,clu_it] <- expansion* (sigma_it[For,For] - sig12 %*% solve(sig22,t(sig12))) 
+    condprop[clu_it] <- condprop[clu_it]*dmvnorm(t(given), # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
+                                                 mean2, sigma= sig22, log=FALSE)
   }
+  conddens$parameters$pro <- condprop
   conddens$parameters$variance <- .do_call_wrap("sigma2decomp", 
                                                 list(sigma=sigma11,tol=-1), # tol to avoid a simplification in the structure of $orientation that may hit a but in mclust...
                                                 pack="mclust") 
@@ -85,31 +95,63 @@
 
 
 .marginalize_mclust <- function(jointdens, colNames, For, over) {
-  if (length(For)==1L) stop("mclust cannot be used on one-parameter models.") # bc sigma2decomp -> cor(1,1) fails when there is a single parameter
   nbCluster <- jointdens$G
   margdens <- jointdens
-  margdens$data <- margdens$data[,For]
+  margdens$data <- margdens$data[,For, drop=FALSE]
   margdens$parameters$variance$d <- ncol(margdens$data)
   margdens$parameters$mean <- margdens$parameters$mean[For,,drop=FALSE]
   COV <- margdens$parameters$variance$sigma # single array for all clusters 
-  COV <- COV[For,For,,drop=FALSE]
-  margdens$parameters$variance <- .do_call_wrap("sigma2decomp", 
-                                                list(sigma=COV,tol=-1), # tol to avoid a simplification in the structure of $orientation that may hit a but in mclust...
-                                                pack="mclust") 
+  COV <- COV[For,For,]
+  if (length(For)==1L) {
+    if (length(COV)==1L) {
+      margdens$parameters$variance <- list(modelName="X", d=1, G=1L, sigmasq=COV)
+    } else {
+      # "V" may not be implied by the original fit, but we don't count dfs on this object
+      margdens$parameters$variance <- list(modelName="V", d=1, G=length(COV), sigmasq=COV, scale=COV) 
+    }
+  } else {
+    margdens$parameters$variance <- .do_call_wrap("sigma2decomp", 
+                                                  list(sigma=COV,tol=-1), # tol to avoid a simplification in the structure of $orientation that may hit a but in mclust...
+                                                  pack="mclust") 
+    if (margdens$modelName=="VVV") {
+      cholsigma <- array(0,dim=dim(COV))
+      for (it in seq_len(dim(cholsigma)[3L])) cholsigma[,,it] <- chol(COV[,,it])
+      margdens$parameters$variance$cholsigma <- cholsigma
+    }
+  }
   # Not necess useful here, but following thesamelogic as in .conditional_mclust():
   margdens$modelName <- margdens$parameters$variance$modelName
   return(margdens)
 }
 
-
-
-.get_best_clu_by_AIC <- function(cluObject) { ## cluObject: mixmodCluster object
-  BICs <- unlist(lapply(cluObject@results,slot,name="criterionValue"))
-  logLs <- unlist(lapply(cluObject@results,slot,name="likelihood"))
+.get_best_mixmod_by_IC <- function(cluObject, which=Infusion.getOption("criterion"))  {
+  if (inherits(cluObject,"try-error")) return(cluObject) ## passes original error info rather than hiding it under another error
+  results <- cluObject@results
+  if (length(results)==1L) return(results[[1L]])
+  anyNaN <- logical(length(results))
+  # patch for odd bug of Rmixmod: NaN in parameters but no error reported, and lik & BIC are real.
+  for (it in seq_along(results)) anyNaN[it] <- anyNA(results[[it]]@proba)
+  results <- results[ ! anyNaN]
+  BICs <- logLs <- numeric(length(results))
+  for (it in seq_along(results)) {
+    BICs[it] <- results[[it]]@criterionValue
+    logLs[it] <- results[[it]]@likelihood
+  }
+  if (which=="BIC") return(results[[which.min(BICs)]])
+  # ELSE
   dfs <- (2*logLs+BICs)/(log(cluObject@nbSample))
   AICs <- -2*logLs+2*dfs
-  return(cluObject@results[[which.min(AICs)]])
+  return(results[[which.min(AICs)]])
 }
+
+# .get_best_clu_by_AIC <- function(cluObject) { ## cluObject: mixmodCluster object
+#   if (inherits(cluObject,"try-error")) return(cluObject) ## passes original error info rather than hiding it under another error
+#   BICs <- unlist(lapply(cluObject@results,slot,name="criterionValue"))
+#   logLs <- unlist(lapply(cluObject@results,slot,name="likelihood"))
+#   dfs <- (2*logLs+BICs)/(log(cluObject@nbSample))
+#   AICs <- -2*logLs+2*dfs
+#   return(cluObject@results[[which.min(AICs)]])
+# }
 
 .solve_t_cholfn <- function(mat) {
   resu <- solve(t(chol(mat)))
@@ -121,7 +163,7 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
                             logLname=Infusion.getOption("logLname"), ## not immed useful
                             Simulate=attr(data,"Simulate"), ## may be NULL
                             nbCluster=Infusion.getOption("nbCluster"),
-                            using=Infusion.getOption("using"),
+                            using=Infusion.getOption("mixturing"),
                             verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                          pedantic=FALSE,
                                          final=FALSE),
@@ -129,6 +171,13 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
 ) {
   if ( ! is.data.frame(data)) {
     stop(paste("'object' is not a data.frame.\n Did you mean to call infer_logLs() rather than infer_Slik_joint() ?"))
+  }
+  if (is.null(raw_data <- attr(data,"raw_data"))) {
+    if (is.null(attr(data,"LOWER"))) { # Temporary patch? stop() instead of warning() ?
+      warning('Some required attributes seem to be missing from the "data" [see "Value" in help("add_reftable")].\n Further execution could fail.')
+    }
+  } else if (is.null(attr(raw_data,"LOWER"))) { # Temporary patch? stop() instead of warning() ?
+    warning('Some required attributes seem to be missing from attr(data,"raw_data" [see "Value" in help("add_reftable")].\n Further execution could fail.')
   }
   if ( ! is.null( cn <- colnames(stat.obs))) {
     message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame. Converting...")
@@ -228,16 +277,16 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
         )),immediate. = TRUE)
     if (FALSE) { ## older code; still useful for devel
       jointdens <- try(.do_call_wrap("mixmodCluster",locarglist),silent = TRUE)
-      jointdens <- .get_best_clu_by_AIC(jointdens)
+      jointdens <- .get_best_mixmod_by_IC(jointdens)
     }
-    jointdens <- try(.do_call_wrap(".densityMixmod",c(locarglist,list(stat.obs=stat.obs))),silent = TRUE) 
+    jointdens <- do.call(".densityMixmod",c(locarglist,list(stat.obs=stat.obs)))
     if (inherits(jointdens,"try-error")) {
       nbCluster <- eval(Infusion.getOption("nbCluster"))
       if ( ! identical(nbCluster, locarglist$nbCluster)) {
         locarglist$nbCluster <- nbCluster
-        jointdens <- .do_call_wrap(".densityMixmod",c(locarglist,list(stat.obs=stat.obs)))
-      } else stop(jointdens)
-    } ## else .densityMixmod has already run .get_best_clu_by_AIC()  
+        jointdens <- do.call(".densityMixmod",c(locarglist,list(stat.obs=stat.obs)))
+      } else stop(jointdens) # i.e stop(<error object>)
+    } ## else .densityMixmod has already run .get_best_mixmod_by_IC()  
     # plotCluster(jointdens,data=locarglist$data,variable1="theta_p",variable2="theta") # var1: stat (prediction of projection); var2: actual param
     if (verbose$most) cat(paste(" joint density modeling:",jointdens@nbCluster,"clusters;\n"))
     if (verbose$pedantic) if (jointdens@nbCluster==max(nbCluster$jointdens)) message("Inferred # of clusters= max of allowed range.")
@@ -255,9 +304,7 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
         locarglist$nbCluster <- eval(Infusion.getOption("nbCluster"))
         pardens <- do.call("mixmodCluster",locarglist)
       }                               
-      if (length(nbCluster)==1L) {
-        pardens <- pardens@results[[1L]]
-      } else { pardens <- .get_best_clu_by_AIC(pardens) }
+      pardens <- .get_best_mixmod_by_IC(pardens) 
       if (verbose$most) cat(paste(" parameter modeling:",pardens@nbCluster,"clusters.\n"))
     }
     #plotCluster(pardens,data=data[,fittedPars]) to plot @results[[1L]] which is a 'MixModResults', not a 'mixmodCluster' object.
@@ -287,15 +334,12 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
   if (is.null(resu$UPPER)) resu$UPPER <- resu$upper
   attr(resu,"Infusion.version") <- packageVersion("Infusion")
   class(resu) <- c("SLik_j",class(resu))
-  predEDF <- predict(resu,newdata=data[,fittedPars,drop=FALSE])
-  wm <- which.max(predEDF)
-  resu$optrEDF <- list(par=data[wm,fittedPars,drop=FALSE],value=predEDF[wm])
   resu$raw_data <- attr(data,"raw_data")
   return(resu)
 }
 
 
-## iwas nfer_SLik_joint -> predict -> predict.SLik_j -> predict.MixmodResults
+## was infer_SLik_joint -> predict -> predict.SLik_j -> predict.MixmodResults
 # except that now                                    -> .pointpredict.Rmixmod -> predict.dMixmod
 predict.MixmodResults <- function(object, newdata,log=TRUE, solve_t_chol_sigma_list,...) {
   Sobs_activeBoundaries <- atb <- freqs <- NULL ## FR->FR tempo
@@ -330,21 +374,37 @@ predict.MixmodResults <- function(object, newdata,log=TRUE, solve_t_chol_sigma_l
   return(mixture)
 }
 
-.pointpredict.Rmixmod <- function(point, object, tstat.obs, log, which, ...)  {
-  if (which!="parvaldens") jointvaldens <- predict(object$jointdens,
-                                                   newdata=cbind(t(point),tstat.obs),
-                                                   solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$jointdens,
-                                                   log=log,...)
+.pointpredict.Rmixmod <- function(X, object, 
+                                  tstat.obs, # 1-row matrix as otherwise more cases should be considered for cbind'ing
+                                  log, which, ...)  {
+  if (is.null(dim(X))) {
+    newdata <- cbind(t(X),tstat.obs) # cbind two 1-row matrices
+  } else {
+    if (length(intersect(colnames(X),colnames(tstat.obs)))) stop("'X' should contain only parameters, not summary statistics")
+    newdata <- cbind(X,tstat.obs[rep(1,nrow(X)),,drop=FALSE]) # cbind two nrow(X)-row matrices
+  }
+  if (which!="parvaldens") {
+    jointvaldens <- predict(object$jointdens,
+                            newdata=newdata,
+                            solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$jointdens,
+                            log=log,...)
+  }
   if (which=="jointvaldens") return(jointvaldens)
-  parvaldens <- predict(object$pardens,newdata=point,
+  parvaldens <- predict(object$pardens,newdata=newdata,
                         solve_t_chol_sigma_list=object$solve_t_chol_sigma_lists$pardens,
                         log=log,...) 
   if (which=="parvaldens") return(parvaldens)
+  # ELSE: "lik", or "safe" for safe version of "lik" using object$thr_dpar
   if (log) {
     condvaldens <- jointvaldens - parvaldens
-  } else condvaldens <- jointvaldens/parvaldens
-  return(condvaldens)
+    if (which=="safe") condvaldens <- condvaldens + pmin(0,parvaldens-object$thr_dpar)
+  } else {
+    condvaldens <- jointvaldens/parvaldens
+    if (which=="safe") condvaldens <- condvaldens*pmin(1,parvaldens/object$thr_dpar)
+  }
+  return(condvaldens) # vector if X was a matrix
 }
+
 
 .predict_SLik_j_mclust <- function(object, newdata, tstat.obs, log, which)  {
   if (which!="parvaldens") jointvaldens <- predict(object$jointdens, newdata=cbind(data.frame(newdata),tstat.obs)) # ! order of elements in newdata must be that of fittedPars as in object$jointdens$data
@@ -361,10 +421,9 @@ predict.MixmodResults <- function(object, newdata,log=TRUE, solve_t_chol_sigma_l
 
 predict.SLik_j <- function (object, 
                             newdata, ## requests new fittedPars values! 
-                            # newdata=object$logLs[,object$colTypes$fittedPars,drop=FALSE], 
                             log=TRUE, 
-                            which="condvaldens",
-                            tstat= t(attr(object$logLs,"stat.obs")),
+                            which="lik", 
+                            tstat= t(attr(object$logLs,"stat.obs")), # 1-row matrix...
                             ...) {
   if (is.null(nrow(newdata)) ) newdata <- t(as.matrix(newdata)) # as.matrix keeps names
   if (is.null(colnames(newdata))) colnames(newdata) <- object$colTypes$fittedPars
@@ -373,7 +432,11 @@ predict.SLik_j <- function (object,
   if (inherits(object$jointdens,"densityMclust")) {
     .predict_SLik_j_mclust(object=object, newdata=newdata, tstat.obs=tstat, log=log, which=which)
   } else {
-    apply(newdata,1L, .pointpredict.Rmixmod, object=object, tstat.obs=tstat, log=log, which=which)
+    bli <- .pointpredict.Rmixmod(X=newdata, object=object, tstat.obs=tstat, log=log, which=which)
+    names(bli) <- rownames(newdata) ## predict.glm (say) keeps names; 
+                                    ## RMSEs computation uses names of CI bounds, to be retained here, to name its results
+    return(bli)
+    # apply(newdata,1L, .pointpredict.Rmixmod, object=object, tstat.obs=tstat, log=log, which=which)
   }
 }
 
@@ -390,18 +453,20 @@ refine.SLik_j <- function(object,method=NULL,...) {
   refine.default(object, surfaceData=object$logLs, method=method, ...)
 }
 
-print.SLik_j <-function(x,...) {summary.SLik_j(x,...)} 
+summary.SLik_j <- summary.SLik
+
+print.SLik_j <- function(x,...) {summary.SLik_j(x,...)} 
 
 .rparam_from_SLik_j <- function(object, 
                                 frac, 
-                                fittedPars=NULL,level) {
+                                fittedPars=NULL,level,tol=0) {
   if (is.null(fittedPars)) fittedPars <- object$colTypes$fittedPars
-  CI_LRstat <- qchisq(level,df=length(fittedPars)) 
+  CI_LRstat <- qchisq(level,df=length(fittedPars))/2 
   size_first_iter <- attr(object$logLs,"n_first_iter")
   if (is.null(size_first_iter)) size_first_iter <- length(which(object$logLs$cumul_iter==1)) ## FR->FR temporary back compat
   prev_n_iter <- max(object$logLs$cumul_iter)
   ceil_size <- target_size <- frac*max(size_first_iter/2, size_first_iter*(prev_n_iter+1L)-nrow(object$logLs))
-  if ( ! is.null(freq_good <- attr(object$logLs,"freq_good")$uniform)) ceil_size <- ceiling(ceil_size/freq_good)
+  if ( ! is.null(freq_good <- attr(object$logLs,"freq_good")$default)) ceil_size <- ceiling(ceil_size/freq_good)
   if (inherits(object$jointdens,"densityMclust")) {
     trypoints <- do.call("sim", c(object$jointdens[c("modelName", "parameters")],list(n=ceil_size)))
     trypoints <- trypoints[,1L+seq_len(length(fittedPars)),drop=FALSE]  
@@ -410,32 +475,48 @@ print.SLik_j <-function(x,...) {summary.SLik_j(x,...)}
     trypoints <- trypoints[,seq_len(length(fittedPars)),drop=FALSE] # sample in marginal distrib of params from sample in jointdens
   } ## : samples the joint and keep only the params => distrib of trypoints=current distr of param (pardens)
   colnames(trypoints) <- fittedPars
-  prior <- predict(object,trypoints,which="parvaldens") ## slow
-  logLs <- predict(object,trypoints,which="condvaldens") ## slow
-  criterion <- logLs-prior ## to *cancel* the fact that we sampled according to pardens
-  threshold <- max(criterion)-CI_LRstat ## defines a slice of criterion values
-  regul <- pmax(threshold-CI_LRstat, ## sets a minimal weight=exp(-CI_LRstat)
-                pmin(threshold,criterion)) ## sets a maximal weight = exp(0)
-  weights <- exp(regul-threshold) 
-  if (FALSE) { ## ring sampling. yields poor clustering.
-    locsd <- 1/5
-    weights <- weights*sapply(criterion,function(v) max(dnorm(v-c(0,CI_LRstat/2),sd = locsd)))/(0.3989422804014327*locsd)
-  }
-  good <- which(runif(n=length(weights))<weights) ## samples uniformly in the current fitted distrib of params with logL>threshold
-  freq_good <- length(good)/ceil_size
-  if (freq_good < 1/5) {
-    good <- order(weights,decreasing=TRUE)[seq(ceil_size/5)]
-    freq_good <- 1/5 ## to avoid explosion of # of sampled points
-  } else if (length(good)>target_size) {
+  for (vv in fittedPars) trypoints <- trypoints[trypoints[,vv]>object$LOWER[vv],,drop=FALSE]
+  for (vv in fittedPars) trypoints <- trypoints[trypoints[,vv]<object$UPPER[vv],,drop=FALSE]
+  #
+  prior <- predict(object,trypoints,which="parvaldens") ## slow (F I X M E?)
+  logLs <- predict(object,trypoints,which="lik") ## likelihood fn  slow
+  flatnd_max <- max(logLs)-CI_LRstat ## defines an upper slice of logLs values.
+  upperslice <- ( logLs> flatnd_max )
+  weights <- numeric(length(logLs))
+  weights[ upperslice] <- max(prior[upperslice])-prior[upperslice] ## in log density units
+  max_upper <- max(weights[ upperslice]) ## in log density units
+  weights[ ! upperslice] <- logLs[ ! upperslice] -prior[ ! upperslice] 
+  max_lower <- max(weights[ ! upperslice])
+  weights[ ! upperslice] <- weights[ ! upperslice] + max_upper-max_lower # hence same maximum 'max_upper' in the two regions.
+  # Refinement of the same idea but with lesser impact of logLs variation outside the upperslice:
+  weights[ ! upperslice] <- ((1-tol)*weights[ ! upperslice]+tol*max_upper) ## still in log density units
+  # we could correct  ! upperslice acording to 'prior' but this not be worth the effort. 
+  #
+  weights <- exp(weights-max(weights)) 
+  wei_runif <- runif(n=length(weights))<weights ## allows some exploration by sampling some 'bad' points
+  good <- which(wei_runif) ## samples uniformly in the current fitted distrib of params with logL>threshold,
+                                                  ## with tapering around
+  freq_good <- length(good)/ceil_size 
+  if (length(good)>target_size) {
     good <- good[sample(length(good),size = target_size)]
-  } # may stay a few points below target, rather than add points that were not retained bc of low weights (it's better to wait next iteration)
+  } else if (length(good)>target_size-10L) { # just missing a few points... 
+    bad <- which(!wei_runif)
+    order_bad <- order(weights[bad],decreasing=TRUE)
+    supplement <- bad[order_bad][seq(target_size-length(good))]
+    good <- c(good,supplement)
+  } else if (freq_good < 1/5) {
+    bad <- which(!wei_runif)
+    order_bad <- order(weights[bad],decreasing=TRUE)
+    supplement <- bad[order_bad][seq(ceil_size/5-length(good))]
+    good <- c(good,supplement)
+  } # else may stay a few points below target, rather than add points that were not retained bc of low weights (it's better to wait next iteration)
   trypoints <- trypoints[good,,drop=FALSE]
   trypoints <- (cbind(trypoints,object$colTypes$fixedPars)) ## add fixedPars for simulation
   trypoints <- trypoints[,object$colTypes$allPars,drop=FALSE] ## column reordering
   trypoints <- data.frame(trypoints)
-  for (vv in fittedPars) trypoints <- trypoints[trypoints[,vv]>object$LOWER[vv],,drop=FALSE]
-  for (vv in fittedPars) trypoints <- trypoints[trypoints[,vv]<object$UPPER[vv],,drop=FALSE]
-  return(list(trypoints=trypoints, freq_good=freq_good))
+  return(list(trypoints=trypoints, 
+              freq_good=max(1/5,freq_good) # max() to avoid explosion of # of sampled points
+             ))
 }
 
 
@@ -452,7 +533,7 @@ print.SLik_j <-function(x,...) {summary.SLik_j(x,...)}
     trypoints <- trypoints[,1L+seq_len(length(fittedPars)),drop=FALSE]
   } else {
     trypoints <- .simulate.MixmodResults(object$postdens, nsim=1L, size=ceil_size, drop=TRUE)
-  } ## : samples the joint and keep only the params => distrib of trypoints=current distr of param (pardens)
+  } 
   colnames(trypoints) <- fittedPars
   trypoints <- (cbind(trypoints,object$colTypes$fixedPars)) ## add fixedPars for simulation
   trypoints <- trypoints[,object$colTypes$allPars,drop=FALSE] ## column reordering
@@ -471,7 +552,7 @@ print.SLik_j <-function(x,...) {summary.SLik_j(x,...)}
   locpredict <- function(x) {predict.SLik_j(object,newdata=x)}
   MSLE <- object$MSL$MSLE
   fittedNames <- names(MSLE)
-  RMSEs <- object$RMSEs
+  RMSEs <- get_from(object,"RMSEs")
   #
   nvec <- .make_n(RMSEs=RMSEs, fittedPars=fittedNames, n=size, CIweight=CIweight)
   #
@@ -534,73 +615,97 @@ print.SLik_j <-function(x,...) {summary.SLik_j(x,...)}
 
 profile.SLik_j <- function(fitted,...) profile.SLik(fitted=fitted,...) ## no need for two distinct methods here
 
+# Called by .RMSEwrapper.SLik_j();
 # this does not call the process-simulating function. Instead, it performs a sort of parametric bootstrap from the Gaussian mixture model.
+# Hence, it can simulate negative variance parameters and jointly simulate projected statistics from the jointdens...
 .boot.SLik_j <- function(object,nsim=2L, force=FALSE, verbose = TRUE, seed=NULL, 
                          parent_cores_info=NULL, # defined cluster by parent *.boot.SLik_j* calls
-                         nb_cores=NULL, packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env") # not required if parent_cores_info is provided.
+                         packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env"), # not required if parent_cores_info is provided.
+                         cluster_args=list()
                          ) {
   if (!force && nsim<2L) stop("'nsim' must be > 1")
     if (inherits(object$jointdens,"densityMclust")) {
     bootrepls <- replicate(nsim, do.call("sim", c(object$jointdens[c("modelName", "parameters")],
                                                   list(n=nrow(object$logLs))))[,-1L],simplify=FALSE)
-    nbCluster <- list(jointdens=object$jointdens$G,
+    nbCluster_SVs <- list(jointdens=object$jointdens$G,
                       pardens=object$pardens$G)
   } else {
     bootrepls <- .simulate.MixmodResults(object$jointdens, nsim=nsim, size=nrow(object$logLs),
                                          drop=FALSE) 
-    nbCluster <- list(jointdens=object$jointdens@nbCluster,
+    nbCluster_SVs <- list(jointdens=object$jointdens@nbCluster,
                       pardens=object$pardens@nbCluster) # single values so that this exposes to clustering failure.
   } ##  marginal=current distr of param
   
   boo <- object$logLs[,with(object$colTypes,c(fittedPars,statNames))]
+  attr(boo, "allPars") <- object$colTypes$fittedPars # late 2021/01/25 correction as otherwise infer_SLik_joint() tries to use the original allPars that include fixed ones
   it <- 0L
   prevmsglength <- 0L
   resu <- vector("list")
-  boo_SLik_joint <- function(simul) {
+  boo_SLik_joint <- function(simul, debug_level=0L) {
     it <<- it+1
     locmess <- paste("boostrap replicate",it,"of",nsim,"   ")
     if (verbose) {prevmsglength <<- .overcat(locmess,prevmsglength = prevmsglength)}
     boo[] <- simul
-    densv <- suppressWarnings( ## suppress warnings for clustering failure
-      try(infer_SLik_joint(boo,stat.obs=attr(object$logLs,"stat.obs"), nbCluster=nbCluster,
-                           verbose=list(most=FALSE,final=FALSE)),silent=TRUE))
-    if (inherits(densv,"try-error")) {
-      return(NULL)
-    } else return(densv)
+    if (debug_level<2L) { # return valid, NULL or try-error
+      densv <- suppressWarnings( ## suppress warnings for clustering failure
+        try(infer_SLik_joint(boo,stat.obs=attr(object$logLs,"stat.obs"), nbCluster=nbCluster_SVs,
+                             verbose=list(most=FALSE,final=FALSE)),silent=TRUE))
+      if (inherits(densv,"try-error") && debug_level==0L) {
+        return(NULL) ## used in whichvalid <- which( ! sapply(resu,is.null)) below
+      } else return(densv)
+    } else { # return error -> useful in serial mode only
+      densv <- suppressWarnings( ## suppress warnings for clustering failure
+        infer_SLik_joint(boo,stat.obs=attr(object$logLs,"stat.obs"), nbCluster=nbCluster_SVs,
+                         verbose=list(most=FALSE,final=FALSE)))
+      return(densv)
+    }
   }
   if (is.null(parent_cores_info)) {
-    cores_info <- .init_cores(nb_cores=nb_cores)
+    cores_info <- .init_cores(cluster_args=cluster_args)
     cl <- cores_info$cl
     if ( ! is.null(cl)) {
-      parallel::clusterExport(cl, list("packages"),envir=environment()) ## passes the list of packages to load
-      # Infusion not leaded in child process !
+      parallel::clusterExport(cl, "packages",envir=environment()) ## passes the list of packages to load
+      # Infusion not loaded in child process !
       #parallel::clusterExport(cl, list("nRealizations"),envir=environment()) 
       #parallel::clusterCall(cl,fun=Infusion.options,nRealizations=nRealizations)
-      if ( ! is.null(env)) parallel::clusterExport(cl=cl, as.list(ls(env)),envir=env)
+      if ( ! is.null(env)) parallel::clusterExport(cl=cl, ls(env),envir=env)
     }
   } else cores_info <- parent_cores_info
   resu <- pblapply(bootrepls,boo_SLik_joint,cl = cores_info$cl)
   #resu <- lapply(bootrepls,boo_SLik_joint)
   whichvalid <- which( ! sapply(resu,is.null))
   resu <- resu[whichvalid]
+  if (length(resu)==0L) {
+    message("All bootstrap replicates failed; this suggests a problem that cannot be solved by computing more replicates.\n Trying to diagnose the problem...")
+    if (cores_info$nb_cores>1L) {
+      message("\nIn parallel mode, first replicate gives:")
+      resu <- pblapply(bootrepls[1],boo_SLik_joint,cl = cores_info$cl, debug_level=1)
+      print(resu[[1]][1])
+      message("\nTesting whether this generates an error in in serial mode:") # might not fail if pb only in parallel mode
+    } else  message("\nIn serial mode, first replicate gives:") # should fail again
+    abyss <- lapply(bootrepls[1],boo_SLik_joint, debug_level=2)
+    return(NULL)
+  }
   while (length(resu)< nsim) {
-    message(paste(nsim-length(resu),"failed bootstrap replicate(s); drawing sample(s) again..."))
-    moreresu <- .boot.SLik_j(object, nsim=nsim-length(resu), force=TRUE, verbose=verbose, parent_cores_info=cores_info)
+    message(paste("Mixture modelling with given nbCluster failed for",nsim-length(resu),"replicate(s); drawing sample(s) again..."))
+    moreresu <- .boot.SLik_j(object, nsim=nsim-length(resu), force=TRUE, verbose=verbose, parent_cores_info=cores_info) # recursive call uses cores_info but not cluster_args.
     resu <- c(resu,moreresu)
   }
   if (is.null(parent_cores_info)) .close_cores(cores_info)
   invisible(resu)
 }
 
-.RMSEwrapper.SLik_j <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, nsim=10L,verbose=interactive()) {
-  bootrepls <- .boot.SLik_j(object,nsim=nsim,verbose=verbose)
+# Called by MSL()
+.RMSEwrapper.SLik_j <- function(object, CIpoints=object$CIobject$bounds, useCI=TRUE, nsim=10L,verbose=interactive(),
+                                cluster_args=list()) {
+  bootrepls <- .boot.SLik_j(object,nsim=nsim,verbose=verbose,cluster_args=cluster_args) # returns gaussian mixture models for each resample; no MSL as not needed
   if( useCI && ! is.null(CIpoints) ) {
     locdata <- data.frame(rbind(MSLE=object$MSL$MSLE,CIpoints))
-    covmat <- cov( do.call(rbind,lapply(bootrepls,predict,newdata=locdata))) ## covmat of predict=of logL
+    covmat <- cov(do.call(rbind,lapply(bootrepls,predict,newdata=locdata, which="lik"))) ## covmat of predict=of logL
     MSEs <- c(MSL=covmat[1,1],diag(covmat[-1,-1,drop=FALSE])+covmat[1,1]-2*covmat[1,-1])
   } else {
     locdata <- object$MSL$MSLE
-    MSEs <- structure( var( unlist(lapply(bootrepls,predict,newdata=locdata)))  ,names="MSL")
+    MSEs <- structure( var( unlist(lapply(bootrepls,predict,newdata=locdata, which="lik")))  ,names="MSL")
   }
   RMSEs <- sqrt(MSEs)
   if (length(MSEs)>1L) {

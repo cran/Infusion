@@ -167,7 +167,7 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   whichNAs <- unlist(lapply(bounds,function(vec) {identical(vec,NA)}))
   missingBounds <- names(bounds[whichNAs])
   bounds <- do.call(rbind,bounds[ ! whichNAs])
-  return(list(CIs=CIs,bounds=bounds,missingBounds=missingBounds,level=level)) 
+  return(list(CIs=CIs,bounds=bounds,missingBounds=missingBounds,level=level, warn=NULL)) 
 }
 
 .makenewname <- function(base,varnames) { ## post CRAN 1.4.1

@@ -11,14 +11,6 @@
 \alias{predict.MixmodResults}
 \alias{predict.SLikp}
 \alias{plot.MixmodResults}
-\alias{print.SLik}
-\alias{print.SLik_j}
-\alias{print.logLs}
-\alias{print.SLikp}
-\alias{summary.logLs}
-\alias{summary.SLik}
-\alias{summary.SLik_j}
-\alias{summary.SLikp}
 
 
 % \alias{confintCDF.SLik}

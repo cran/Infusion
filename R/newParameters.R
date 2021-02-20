@@ -87,7 +87,7 @@
     if ( is.null(vertices)) {
       vertices <- object$fit$data[,fittedPars,drop=FALSE]
       pred <- fitted(object$fit)
-    } else pred <- predict(object,newdata=vertices)
+    } else pred <- predict(object,newdata=vertices, which="lik")
     uppervertices <- vertices[pred>lrthreshold,,drop=FALSE]
     ## if there is only one uppervertice, sample_vertices will typically sample only one point constructed from fixed and that vertice
     ## => test to avoid that; but more general pb must be caught by the test:
@@ -139,7 +139,7 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
                    #auxlevel=1-((1-level)*2/3),
                    CIweight=Infusion.getOption("CIweight")) {
   fittedPars <- object$colTypes$fittedPars  
-  nvec <-  .make_n(RMSEs=object$RMSEs, fittedPars=fittedPars, n=n, CIweight=CIweight)
+  nvec <-  .make_n(RMSEs=get_from(object,"RMSEs"), fittedPars=fittedPars, n=n, CIweight=CIweight)
   np <- length(fittedPars)
   #
   pts <- object$fit$data[,object$colTypes$fittedPars,drop=FALSE]
@@ -167,7 +167,7 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
   }
     # points targeting CI bounds
   if (useCI) {
-    if (is.null(object$CIobject))  object$CIobject <- .allCIs(object,level=level,verbose=FALSE)
+    if (is.null(object$CIobject) || ! is.null(object$CIobject$warn))  object$CIobject <- .allCIs(object,level=level,verbose=FALSE)
     auxCIobject <- .allCIs(object,level=1-((1-object$CIobject$level)*2/3),verbose=FALSE)
     CIpoints <- object$CIobject$bounds
     ## those for which the bound is present:
@@ -247,7 +247,7 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
   newold <- proxy::dist(trypoints,object$logLs[,fittedPars,drop=FALSE])
   trypoints <- trypoints[apply(newold,1,function(line) {length(which(line==0))<2L}),,drop=FALSE] 
   trypoints <- cbind(trypoints,object$colTypes$fixedPars) ## add fixedPars for simulation
-  trypoints <- trypoints[,object$colTypes$allPars,drop=FALSE] ## column reordering
+  trypoints <- trypoints[,object$colTypes$allPars,drop=FALSE] ## column reordering and remove polluting things (cumul_iter in fixedPars!: _F I X ME_)
   return(trypoints) ## typically 'n+2' with 'n+1' unique and one replicate, 
                     ## but possibly '1' (if n=0)or 'n+1' (if excess replicates were removed)
 }

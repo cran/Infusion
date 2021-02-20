@@ -8,7 +8,7 @@
 This computes the maximum of an object of class \code{SLik} representing an inferred (summary) likelihood surface}
 \usage{
 MSL(object, CIs = TRUE, level = 0.95, verbose = interactive(),
-    eval_RMSEs = TRUE, ...)
+    eval_RMSEs = TRUE, cluster_args=list(),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -28,16 +28,19 @@ an object of class \code{SLik} as produced by \code{\link{infer_surface.logLs}}
   Logical: whether to evaluate prediction uncertainty for likelihoods/ likelihood ratios/ parameters. 
   %By default TRUE for \code{SLik} objects, and best kept so, as it is necessary for the automated iterative method. Default may be FALSE for other classes of objects, in particular \code{SLik_j}.  
 }
+\item{cluster_args}{A list of arguments, passed to \code{\link[parallel]{makeCluster}}. May contain a non-null \code{spec} element, in which case the distinct \code{nb_cores} argument is ignored.}
+
   \item{\dots}{Further arguments passed from or to other methods. 
   }
 }
 \value{
-  The \code{object} is returned invisibly, with added members 
+  The \code{object} is returned invisibly, with the following added members, each of which being (as from version 1.5.0) an environment:
   \describe{
-    \item{\code{MSL}}{, itself with members \code{MSLE} and \code{maxlogL} that match the \code{par} and \code{value} returned by an \code{optim} call.}
-    \item{\code{RMSEs}}{root mean square errors of the log-likelihood at its inferred maximum and of the log-likelihood ratios at the CI bounds.}
-    \item{\code{par_RMSEs}}{root mean square errors of the CI bounds.}
+    \item{\code{MSL}}{, containing variables \code{MSLE} and \code{maxlogL} that match the \code{par} and \code{value} returned by an \code{optim} call.}
+    \item{\code{RMSEs}}{containing, as variable \code{RMSEs}, the root mean square errors of the log-likelihood at its inferred maximum and of the log-likelihood ratios at the CI bounds.}
+    \item{\code{par_RMSEs}}{containing, as variable \code{par_RMSEs}, root mean square errors of the CI bounds.}
   }
+  To ensure backward-compatibility of code to possible future changes in the structure of the objects, the extractor function \code{\link{get_from}} should be used to extract the \code{RMSEs} and \code{par_RMSEs} variables from their respective environments, and more generally to extract any element from the objects.
 }
 \details{
 If Kriging has been used to construct the likelihood surface, \code{RMSEs} are computed using approximate formulas for prediction (co-)variances in linear mixed midels (see Details in \code{\link[spaMM]{predict}}). Otherwise, a more computer-intensive bootstrap method is used.   

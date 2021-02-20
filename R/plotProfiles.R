@@ -1,3 +1,28 @@
+.MSL_update <- function(object) {
+  message(paste0("A new likelihood maximum was found. The input object is being updated,\n",
+                 "confidence intervals will have to be recomputed,\n",
+                 "and plots will have to be redrawn."))
+  # Discard info before calling MSL otherwise MSL will use it !
+  if ( ! is.null(object$RMSEs)) {
+    object$RMSEs$RMSEs <- NULL 
+    object$RMSEs$warn <- paste("RMSE information for logL discarded as a new likelihood maximum was found by a profile-plot function.\n",
+                               "Re-run MSL() to regenerate this information.")
+  }
+  if ( ! is.null(object$CIobject)) {
+    for (st in names(object$CIobject)) object$CIobject[[st]] <- NULL
+    object$CIobject$warn <-  paste("CI information discarded as a new likelihood maximum was found by a profile-plot function.\n",
+                                   "Re-run MSL() to regenerate this information.")
+  }
+  if ( ! is.null(object$par_RMSEs)) {
+    for (st in names(object$par_RMSEs)) object$par_RMSEs[[st]] <- NULL
+    object$par_RMSEs$warn <-  paste("Intervals and RMSEs for parameters discarded as a new likelihood maximum was found by a profile-plot function.\n",
+                                    "Re-run MSL() to regenerate this information.")
+  }
+  newmax <- MSL(object, eval_RMSEs=FALSE, CIs=FALSE)
+  for (st in ls(newmax$MSL)) object$MSL[[st]] <- newmax$MSL[[st]] ## but keeping the environment (~pointer) unchanged.
+} # only environmentswhere updated, so no return value
+
+
 plot1Dprof <- function(object, ## SLik object
                        pars=object$colTypes$fittedPars, ## for which parameters profiles will be plotted
                        type="logLR", ## type of plot: see switch below for possible types  
@@ -6,12 +31,12 @@ plot1Dprof <- function(object, ## SLik object
                        xlabs=list(), ## x axis names; non-defaut is a list with names= some of the 'pars' 
                        ylab, ## y-axis name; default deduced from type
                        scales=NULL,
-                       plotpar=list(pch=20) ## graphic parameters, a list of valid arguments for par() 
+                       plotpar=list(pch=20), ## graphic parameters, a list of valid arguments for par() 
+                       control=list(min=-7.568353, shadow_col="grey70")
 ) {
   lower <- object$lower
   upper <- object$upper
   template <- MSLE <- object$MSL$MSLE
-  maxlogL <- object$MSL$maxlogL
   .xlabs <- as.list(pars)
   names(.xlabs) <- pars
   .xlabs[names(xlabs)] <- xlabs
@@ -23,6 +48,8 @@ plot1Dprof <- function(object, ## SLik object
     ylab <- switch(type,
                    LR = "profile likelihood ratio",
                    logLR = "log profile likelihood ratio",
+                   zoom = "log profile likelihood ratio",
+                   dual = "log profile likelihood ratio",
                    logL = "log profile likelihood",
                    stop("Unknown 'type'")
     )
@@ -53,19 +80,19 @@ plot1Dprof <- function(object, ## SLik object
       ## nested defs so that objfn's template inherits from profil's template 
       objfn <- function(v) {
         template[profiledOutPars] <- v 
-        predict(object,template)[1]
+        - predict(object,template, which="safe")[1]
         ## comparer a OKsmooth:::gridfn
       }
-      value <- optim(MSLE[profiledOutPars],fn=objfn,
-                     lower=lower[profiledOutPars],upper=upper[profiledOutPars],
-                     control=list(fnscale=-1,parscale=(upper-lower)[profiledOutPars]),
-                     method="L-BFGS-B")$value
-      resu <- switch(type,
-                     LR = exp(value-maxlogL),
-                     logLR = value-maxlogL,
-                     logL = value
-      )
-      return(resu)
+      optr <- .safe_opt(MSLE[profiledOutPars],objfn=objfn,
+                        lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), verbose=FALSE)
+      value <- - optr$objective
+      if (value>object$MSL$maxlogL+1e-6) {
+        next_init <- template
+        next_init[profiledOutPars] <- optr$solution
+        object$MSL$init_from_prof <- next_init
+        object$MSL$maxlogL <- value
+      }
+      return(value)
     } 
     if (gridSteps>0) {
       x <- seq(object$lower[st],object$upper[st],length.out=gridSteps)
@@ -77,16 +104,44 @@ plot1Dprof <- function(object, ## SLik object
           prevmsglength <- .overcat(msg, prevmsglength)
         }
       }
-      plot(x,y,xlab=.xlabs[[st]],ylab=ylab,axes=FALSE,frame=TRUE)
+      maxlogL <- object$MSL$maxlogL
+      y <- switch(type,
+                     LR = exp(y-maxlogL),
+                     logLR = y-maxlogL,
+                     zoom = y-maxlogL,
+                     dual = y-maxlogL,
+                     logL = y
+      )
+      if (type %in% c("zoom","dual")) {
+        .control <- list(min=-7.568353, shadow_col="grey70") # using -qchisq(0.9999, df=1)/2
+        .control[names(control)] <- control
+        top_pts <- (y > .control$min)
+        zoomable <- (length(unique(top_pts)) == 2L) # do not modify type locally as this would affect plot for next param
+      }
+      if (type=="dual" && zoomable) {
+        shadow_col <- .control$shadow_col
+        plot(x,y,xlab="",ylab="",axes=FALSE,frame=FALSE,col=shadow_col)
+        axis(side=3, at = pretty(range(x)), col.ticks =shadow_col, col.axis=shadow_col) # col.axis is for the tick labels not the axis! 
+        axis(side=4, at = pretty(range(y)), col.ticks =shadow_col, col.axis=shadow_col)
+        par(new = TRUE)
+        plot(x[top_pts],y[top_pts],xlab=.xlabs[[st]],ylab=ylab,axes=FALSE,frame=TRUE)
+      } else {
+        if (type=="zoom" && zoomable) {
+          x <- x[top_pts]
+          y <- y[top_pts]
+        }
+        plot(x,y,xlab=.xlabs[[st]],ylab=ylab,axes=FALSE,frame=TRUE)
+      }
       lines(x,y) ## use plotpar$lty to cancel the effect of this
       x_text <- x[1]
       if (interactive()) cat("\n")
     } else {
-      profil <- Vectorize(profil)
-      lowx <- object$lower[st]
-      hix <- object$upper[st]  
-      curve(profil(x),from=lowx,to=hix,xlab=.xlabs[st],ylab=ylab,axes=FALSE,frame=TRUE)
-      x_text <- lowx+ (hix-lowx)/40
+      stop("gridSteps<0 is obsolete.")
+      # profil <- Vectorize(profil)
+      # lowx <- object$lower[st]
+      # hix <- object$upper[st]  
+      # curve(profil(x),from=lowx,to=hix,xlab=.xlabs[st],ylab=ylab,axes=FALSE,frame=TRUE)
+      # x_text <- lowx+ (hix-lowx)/40
     }
     abline(h=(-qchisq(0.95, df=1)/2), col=2)
     text(x_text, (-qchisq(0.95, df=1)/2), "0.95", pos=3, col=2,offset=0.1) 
@@ -95,6 +150,8 @@ plot1Dprof <- function(object, ## SLik object
     MSLy <- switch(type,
                    LR = 1,
                    logLR = 0,
+                   zoom = 0,
+                   dual = 0,
                    logL = maxlogL
     )
     points(MSLE[st],MSLy,pch="+")
@@ -107,7 +164,10 @@ plot1Dprof <- function(object, ## SLik object
     axis(1, at=xscale$at, labels=xscale$labels)
     axis(2)
   }
+  MSL_updating <- ( ! is.null(object$MSL$init_from_prof))
+  if (MSL_updating) .MSL_update(object)
   par(opar)
+  return(list(MSL_updated=MSL_updating))
 }
 
 #plot1DProf(slikT)
@@ -167,20 +227,19 @@ plot2Dprof <- function(object, ## SLik object
         ## nested defs so that objfn's template inherits from profil's template 
         objfn <- function(v) {
           template[profiledOutPars] <- v 
-          predict(object,template)[1]
+          - predict(object,template, which="safe")[1]
           ## comparer a OKsmooth:::gridfn
         }
-        value <- optim(MSLE[profiledOutPars],fn=objfn,
-                       lower=lower[profiledOutPars],upper=upper[profiledOutPars],
-                       control=list(fnscale=-1,parscale=(upper-lower)[profiledOutPars]),
-                       method="L-BFGS-B")$value
-        resu <- switch(type,
-                       LR = exp(value-maxlogL),
-                       logLR = value-maxlogL,
-                       logL = value
-        )
-        
-        return(resu)
+        optr <- .safe_opt(MSLE[profiledOutPars],objfn=objfn,
+                          lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), verbose=FALSE)
+        value <- - optr$objective
+        if (value>object$MSL$maxlogL+1e-6) {
+          next_init <- template
+          next_init[profiledOutPars] <- optr$solution
+          object$MSL$init_from_prof <- next_init
+          object$MSL$maxlogL <- value
+        }
+        return(value)
       } 
       Zvalues <- matrix(ncol=gridSteps,nrow=gridSteps)
       npts <- gridSteps^2
@@ -195,6 +254,12 @@ plot2Dprof <- function(object, ## SLik object
           }
         }
       }
+      maxlogL <- object$MSL$maxlogL
+      Zvalues <- switch(type,
+                  LR = exp(Zvalues-maxlogL),
+                  logLR = Zvalues-maxlogL,
+                  logL = Zvalues
+      )      
       scalefn <- function(name,values) {
         switch(.scales[name],
                "log" =  makeTicks(exp(values), axis=1,scalefn="log",logticks=TRUE,validRange=c(-Inf,Inf)),
@@ -214,7 +279,10 @@ plot2Dprof <- function(object, ## SLik object
       cat("\n")
     }
   }
+  MSL_updating <- ( ! is.null(object$MSL$init_from_prof))
+  if (MSL_updating) .MSL_update(object)
   par(opar)
+  return(list(MSL_updated=MSL_updating))
 }
 
 #plot2DProf(slikT,pars=c("logPop","logSel"),scales=c(logPop="log10",logSel="log10"),

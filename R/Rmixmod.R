@@ -6,7 +6,7 @@ setClassUnion("NULLorNum", c("NULL","numeric"))
 ## Formally extending "MixmodResults"  would requires setting an explicit dependency to the Rmixmod package:
 # setClass("dMixmod", contains = c("MixmodResults"), slots=c(<first slots below>).
 ## Instead, the dMixmod class uses S4 and has all the slots of the \code{MixmodResults} class, but does not formally extends it.
-## Note the non-standard delaration below, and the non-standard construction by
+## Note the non-standard declaration below, and the non-standard construction by
 # class(<mixmodCluster object>) <- structure("dMixmod", package="Infusion")
 ## But NOT an attempted extension by
 #class(resu) <- c("dMixmod", class(resu)) # => Setting class(x) to multiple strings ("dMixmod", "MixmodResults", ...); result will no longer be an S4 object
@@ -108,12 +108,10 @@ setClass("dMixmod",
   } else if (clu_optimizer==".minimize_from_upper") {
     resu <- try(.minimize_from_upper(objfn=.IC_wrapper, range=nbCluster, trace=FALSE, data=data, models=models, 
                                      seed=123)$cluObject@bestResult,silent=TRUE) # F I X M E ? $cluObject@bestResult loses info about $cluObject@strategy
-  } else {
-    ## older code; still useful for devel
-    jointdens <- try(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, seed=seed, 
+  } else { ## default !
+    resu <- try(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, seed=seed, 
                                                         strategy=eval(Infusion.getOption("strategy")))),
                      silent = TRUE)
-    resu <- .get_best_clu_by_AIC(jointdens)
   }
   if (inherits(resu,"try-error")) {
     x <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, 
@@ -131,9 +129,13 @@ setClass("dMixmod",
           if ( ! x@error ) break
         }
       } 
-      resu <- x@bestResult
-    } else { resu <- .get_best_clu_by_AIC(x) }
+      resu <- x@bestResult # MixmodResults
+    } 
   } 
+  # if (inherits(resu,"try-error")) {
+  #   dump.frames("C:/home/francois/travail/stats/InferentialSimulation/Infusion/devtoolsdump",to.file = TRUE)
+  # } else 
+  if ( inherits(resu,"MixmodCluster")) resu <- .get_best_mixmod_by_IC(resu) # MixmodResults
   if (resu@model=="Gaussian_pk_Lk_C") { 
     ## then cov matrices are proportional, wecheck they are not too heterogeneous
     varmats <- resu@parameters@variance
@@ -237,6 +239,14 @@ predict.dMixmod <- function(object,
   return(mixture)
 }
 
+plot.dMixmod <- function(x, data=NULL, ...) {
+  if (requireNamespace("Rmixmod")) {
+    class(x) <- "MixmodResults"
+    if (is.null(data)) stop("'data' needed: something like <SLik_j object>$logLs")
+    Rmixmod::plotCluster(x=x, data=data, ...)
+  } # else we are unlikely to need this function (which is used only for debugging)...
+}
+
 .simulate.MixmodResults <- function (object, nsim=1, seed=NULL, 
                                      size=1, # number of points for each simulation 
                                      drop=TRUE,
@@ -268,7 +278,7 @@ predict.dMixmod <- function(object,
   return(simuls)
 }
 
-.do_call_wrap <- function(chr_fnname,arglist, pack="Rmixmod") {
+.do_call_wrap <- function(chr_fnname,arglist, pack="Rmixmod") { # could be sought has .wrap_do_call
   #eval(as.call(c(quote(require),list(package="Rmixmod", quietly = TRUE))))
   if (length(grep(pack,packageDescription("Infusion")$Imports))) {
     ## then the necessary functions must be imported-from in the NAMESPACE  
@@ -278,7 +288,7 @@ predict.dMixmod <- function(object,
     if ( requireNamespace(pack, quietly = TRUE)) {
       #eval(as.call(c(chr_fnname,arglist))) # quote(stuff)
       myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      do.call(myfun,arglist) ## "stuff"
+      do.call(myfun,arglist) ## "stuff"           ## la version "jeroen" (ibid) est int aussi.
     } else {stop(paste("'",pack,"' required but not available.",sep=""))}
   } else { ## package not declared in DESCRIPTION; to circumvent possible archiving of Rmixmod
     if (suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))) {

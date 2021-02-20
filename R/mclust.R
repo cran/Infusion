@@ -97,6 +97,8 @@
 }
 
 .get_best_mclust_by_IC <- function(cluObject, which=Infusion.getOption("criterion")) {
+  if (inherits(cluObject,"try-error")) return(cluObject) ## passes original error info rather than hiding it under another error
+  if (length(cluObject)==1L) return(cluObject[[1L]])
   BICs <- logLs <- numeric(length(cluObject))
   for (it in seq_along(cluObject)) {
     BICs[it] <- cluObject[[it]]$BIC

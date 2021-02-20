@@ -8,6 +8,7 @@
 \alias{NULLorNum}
 \alias{class:NULLorNum}
 \alias{NULLorNum-class}
+\alias{plot.dMixmod}
 \docType{methods}
 \title{
   Internal S4 classes. 
@@ -15,7 +16,7 @@
 \description{
   The objects or methods referenced here are not to be called by the user, or are waiting for documentation to be written.  
 
-\code{dMixmod} is and S4 class describing distributions that involve discrete probability masses for some variables and gaussian mixtures for other variables conditional on such discrete events. In terms of the represented probability models, and of its slots, is effectively extends the \code{MixmodResults} class from the \code{Rmixmod} package. But it does not formally extends this class in termes of OOP programming. It should not be considered as part of the programming interface, and may be subject to backward-incompatible modifications without notice.
+\code{dMixmod} is an S4 class describing distributions that involve discrete probability masses for some variables and gaussian mixtures for other variables conditional on such discrete events. In terms of the represented probability models, and of its slots, is effectively extends the \code{MixmodResults} class from the \code{Rmixmod} package. But it does not formally extends this class in termes of OOP programming. It should not be considered as part of the programming interface, and may be subject to backward-incompatible modifications without notice.
 }
 \usage{
 # dMixmod: Don't try to use it!

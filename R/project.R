@@ -11,6 +11,8 @@ project <- function(x, ...) UseMethod("project")
     Infusion.getOption("projKnotNbr")
   } else if (method == "keras") {
     Inf
+  } else if (method == "ranger") {
+    floor(10000*log2(length(stats)+1))
   } else {floor(1000*log2(length(stats)+1))}
 }
 
@@ -42,7 +44,9 @@ project.character <- local({
         method <- "REML"
       }
     }
-    if (!is.character(method)) {stop("'method' should be a character string, \n in particular a function name rather than a function")}
+    if (!is.character(method)) {
+      stop("'method' should be a character string, \n in particular a function name rather than a function")
+    } else method_string <- method
     if (is.data.frame(data)) {
       totsim <- data
     } else if (inherits(data,"list")) {
@@ -156,7 +160,13 @@ project.character <- local({
         abline(0,1)
       }
     }
-    mc$data <- eval(mc$data)
+    mc$data <- data ## force eval
+    # but we need to secure x = parName, stats = statNames too
+    #call_env <- list2env(lapply(as.list(match.call(expand.dots=TRUE))[-1],eval)) # does not work: it may store x=local value of "somevar" but the promise remains x= somevar where somevar is not a variable in the list  
+    #environment(mc) <- call_env
+    mc$x <- x
+    mc$stats <- stats
+    mc$method <- method_string # not its interpretation as a function!
     attr(projector,"project_call") <- mc
     return(projector) 
   }
@@ -190,7 +200,8 @@ project.character <- local({
     pred <- predict(oneprojector,data=newdata,...)$predictions 
     if (oob &&  ! is.null(dim(newdata))) {
       #message("oob used")
-      x <- oneprojector$call$data[,oneprojector$forest$independent.variable.names] # data.frame
+      x <- oneprojector$call$data[,oneprojector$forest$independent.variable.names, drop=FALSE] # data.frame 
+      #(without the drop arg, a 1-col df is reduced to a vector => pb for toy example projecting a 1-dim stat)
       dno <- dist(x,newdata[,colnames(x),drop=FALSE])
       newinold <- apply(dno==0L,2L,any)
       if (any(newinold)) {

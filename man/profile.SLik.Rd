@@ -23,14 +23,14 @@ an \code{SLik} object.
   \item{fixed}{When this is \code{NULL} the computed interval is a profile confidence interval over all parameters excluding \code{value}.
      \code{fixed} allows one to set fixed values to some of these parameters.  
 }
-\item{return.optim}{If this is TRUE, and if maximization of likelihood given \code{value} and \code{fixed} is indeed required, then the full result of the \code{optim} call is returned.}
+\item{return.optim}{If this is TRUE, and if maximization of likelihood given \code{value} and \code{fixed} is indeed required, then the full result of the optimization call is returned.}
   \item{\dots}{
   For \code{SLik_j} method, arguments passed to \code{SLik} method.
   For \code{SLik_j} method, currently not used.
 }
 }
 \value{
-The predicted summary profile log-likelihood; or possibly the result of an \code{optim} call if \code{return.optim} is TRUE. 
+The predicted summary profile log-likelihood; or possibly the result of an optimization call if \code{return.optim} is TRUE. 
 }
 \examples{
 ## see main documentation page for the package

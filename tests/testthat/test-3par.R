@@ -1,4 +1,4 @@
-print("test 3 parameters:")
+cat(crayon::yellow("test 3 parameters:\n"))
 
 wout_refine <- 85
 if (Infusion.getOption("example_maxtime")>wout_refine) {
@@ -35,7 +35,7 @@ if (Infusion.getOption("example_maxtime")>wout_refine) {
   plot(slik)
   profile(slik,c(mu1=4)) ## profile summary logL for given parameter value
   confint(slik,"mu1") ## compute confidence interval for given parameter
-  plot1Dprof(slik,pars="s2",gridSteps=40) ## 1D profile
+  plot1Dprof(slik,pars="s2",gridSteps=40) ## 1D profile ## __F I X M E__ check consistency with the MLE after .safe_constrOptim() is fixed
   #
   ## (5) ## refine iteratively
   if (Infusion.getOption("example_maxtime")>(wout_refine+116)) {

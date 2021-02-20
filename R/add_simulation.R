@@ -1,12 +1,34 @@
 
 add_reftable <- function(...) { ## fn for ABC like simulation
-  add_simulation(...,nRealizations=1L)
+  resu <- add_simulation(...,nRealizations=1L)
+  class(resu) <- c("reftable",class(resu))
+  resu
 } 
+
+`[.reftable` <- function (x, i, j, 
+                             drop = TRUE ## replicating default [.data.frame behaviour to allow selecting a single column as a vector, for plots etc 
+) {
+  class(x) <- "data.frame" ## avoids recursive call to `[.reftable
+  resu <- x[i,j,drop=drop]
+  if (is.data.frame(resu)) {
+    attrx <- attributes(x)
+    attrx <- attrx[setdiff(names(attrx), c("names","row.names","class"))]
+    for (st in names(attrx)) attr(resu,st) <- attrx[[st]]
+    parNames <- names(attr(resu, "LOWER"))
+    parKepts <- intersect(parNames,colnames(resu))
+    attr(resu, "LOWER") <- attr(resu, "LOWER")[parKepts]
+    attr(resu, "UPPER") <- attr(resu, "UPPER")[parKepts]
+    class(resu) <- c("reftable", class(resu))
+  } ## else vector
+  return(resu)
+} # Use unlist() to remove attributes from the return value
+
 
 add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
                            nRealizations=NULL,
                            newsimuls=NULL, verbose=interactive(), nb_cores=NULL, packages=NULL,env=NULL,
                            control.Simulate=NULL,
+                           cluster_args=list(),
                            ...) {
   if (is.null(control.Simulate)) control.Simulate <- list(...)
   old_nRealizations <- Infusion.getOption("nRealizations")
@@ -20,19 +42,21 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     uppersList <- list(old=attr(simulations,"UPPER"))  
   } else lowersList <- uppersList <- list()
   if ( ! is.null(par.grid)) {
-    if ( ! inherits(Simulate,"character")) stop("'Simulate' must be a character string")
     if ( ! inherits(par.grid,"data.frame")) stop("'par.grid' argument is not a data.frame")
+    #if ( ! inherits(Simulate,"character")) stop("'Simulate' must be a character string")
+    if ( inherits(Simulate,"character")) Simulate <- eval(parse(text=Simulate))   
     prevmsglength <- 0L
     nsim <- nrow(par.grid)
     gridsimuls <- list()
-    cores_info <- .init_cores(nb_cores=nb_cores)
+    if (is.null(cluster_args$spec)) cluster_args$spec <- nb_cores # which means that cluster_args$spec overrides nb_cores
+    cores_info <- .init_cores(cluster_args=cluster_args)
     cl <- cores_info$cl
     if ( ! is.null(cl)) {
-      parallel::clusterExport(cl, list("packages"),envir=environment()) ## passes the list of packages to load
+      parallel::clusterExport(cl, "packages",envir=environment()) ## passes the list of packages to load
       # Infusion not leaded in child process !
       #parallel::clusterExport(cl, list("nRealizations"),envir=environment()) 
       #parallel::clusterCall(cl,fun=Infusion.options,nRealizations=nRealizations)
-      if ( ! is.null(env)) parallel::clusterExport(cl=cl, as.list(ls(env)),envir=env)
+      if ( ! is.null(env)) parallel::clusterExport(cl=cl, ls(env),envir=env)
     }
     nb_cores <- cores_info$nb_cores
     as_one <- identical(names(nRealizations),"as_one")
@@ -49,17 +73,14 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
     if (which_cl=="replic") {
       repl_cl <- cl ## the one used by simfn_per_par()
       if (length(repl_cl) > 1L) {
-        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
         if (cores_info$has_doSNOW) {
           ## arguments such as Simulate are evaluated in the child envir so we pass definition under the "Simulate" name
-          names(lisimfun) <- "Simulate" 
           pb_char <- "N" # nested
-        } else { ## arguments such as Simulate are evaluated in the parent envir to "myrnorm" so we pass def undern "myrnorm" name
-          names(lisimfun) <- Simulate ## with the name of the function
+        } else { ## arguments such as Simulate are evaluated in the parent envir to "myrnorm" so we pass def under "myrnorm" name
           pb_char <- "n" # nested
         }
-        dotenv <- list2env(lisimfun)
-        parallel::clusterExport(cl=repl_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+        dotenv <- list2env(list(Simulate=Simulate) )
+        parallel::clusterExport(cl=repl_cl, ls(dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
       } else pb_char <- "s"
       param_cl <- NULL
     } else {
@@ -70,10 +91,8 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
         } else {
           pb_char <- "p"
         }
-        lisimfun <- list(eval(parse(text=Simulate))) ## passes the body of the simulation function, 
-        names(lisimfun) <- Simulate ## with the name of the function
-        dotenv <- list2env(lisimfun)
-        parallel::clusterExport(cl=param_cl, as.list(ls(dotenv)),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+        dotenv <- list2env(list(Simulate=Simulate) )
+        parallel::clusterExport(cl=param_cl, ls(dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
       } else pb_char <- "s"
       repl_cl <- NULL 
     }
@@ -93,7 +112,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
           .inorder = TRUE, .errorhandling = "pass"## "pass" to see error messages
         )
         foreach_blob <- do.call(foreach::foreach,foreach_args)
-        simuls <- foreach::`%dopar%`(foreach_blob, do.call(Simulate,parlist))
+        simuls <- foreach::`%dopar%`(foreach_blob, do.call(Simulate, parlist))
         if ( inherits(data.frame(simuls),"list") && ! is.null(mess <- simuls$message && is.list(mess) && is.character(mess[[1L]]))) {
           stop(paste0("The parallel call in add_simulation returned messages as\n",
                       mess[[1L]],
@@ -121,8 +140,13 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
         }
       }
       #
-      if (as_one && ncol(simuls)!=nRealizations) stop(paste("The 'Simulate' function must return a matrix with 'nRealizations' columns.\n",
-                                                            "Here ncol(simuls)=",ncol(simuls),"vs. nRealizations=",nRealizations))
+      if (as_one) {
+        if (is.null(ncol(simuls))) {
+          stop(paste("The 'Simulate' value conflicts with 'nRealizations', because 'nRealizations' has name 'as_one',\n",
+                     "  but 'Simulate' did not return a matrix."))
+        } else if (ncol(simuls)!=nRealizations) stop(paste0("The 'Simulate' value conflicts with 'nRealizations', because nRealizations=c(as_one=",nRealizations,"),\n",
+                                                           "  while 'Simulate' returned a matrix with ",ncol(simuls)," columns."))
+      }
       if (is.null(dim(simuls))) { ## converts to 1-row matrix
         colName <- names(simuls[1])
         dim(simuls) <- c(length(simuls),1)
@@ -141,7 +165,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
         if (show_pb) {
           pb <- txtProgressBar(max = nrow(par.grid), style = 3, char=pb_char) ## doSNOW => 'long' progress bar
           progress <- function(n) setTxtProgressBar(pb, n)
-          parallel::clusterExport(cl=param_cl, list(c(Simulate,"progress")),envir=environment()) ## slow! why?
+          parallel::clusterExport(cl=param_cl, c("Simulate","progress") ,envir=environment()) ## slow! why?
           .options.snow <- list(progress = progress)
         } else .options.snow <- NULL
         ii <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'ii'
@@ -166,7 +190,7 @@ add_simulation <- function(simulations=NULL, Simulate, par.grid=NULL,
       if (verbose && ! isTRUE(getOption('knitr.in.progress'))) {
         pbopt <- pboptions(nout=min(100,2*nrow(par.grid)),type="timer", char=pb_char)
       } else pbopt <- pboptions(type="none")
-      gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl)
+      gridsimuls <- pbsapply(seq_len(nrow(par.grid)), simfn_per_par, simplify=FALSE, cl=param_cl) 
       pboptions(pbopt)
     } # a list of simulated distributions is returned in all cases.
     .close_cores(cores_info)

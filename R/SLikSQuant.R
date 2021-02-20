@@ -23,7 +23,12 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
   stop("No default method for calc.lrthreshold. Provide a method.")
 }
 
-.rparam_from_SLik <- function(object, logLname, fittedPars, level, surfaceData, n, useEI, EIsampleFactor, useCI){
+.rparam_from_SLik <- function(object, logLname, fittedPars, level, n, useEI, EIsampleFactor, useCI){
+  if (inherits(object,"SLikp")) {
+    surfaceData <- object$tailp
+  } else {
+    surfaceData <- object$logLs
+  } 
   ## replace pairs with low predicted lik by pairs with high predicted lik
   pred <- predict(object$fit,binding=logLname) 
   ## : corrected 11/07/2016: pred was predict(object,.) using object$logLs, not object$fit, thereby not matching uli
@@ -71,34 +76,42 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
            surfaceData, ## object$logLs or object$tailp, with stat.obs attribute, etc
            Simulate=attr(surfaceData,"Simulate"),
            maxit=1,n=NULL,useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE),newsimuls=NULL,
-           useCI=TRUE,level=0.95,verbose=list(most=interactive(),movie=FALSE),
+           useCI=TRUE,level=0.95,verbose=list(most=interactive(),final=NULL,movie=FALSE,proj=FALSE),
            precision = Infusion.getOption("precision"),
            nb_cores=NULL, packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env"),
            method, ## "GCV" and HLfit methods for Slik objects; mixmodCluster or... for SLik_j objects
            eval_RMSEs=TRUE,
            update_projectors=FALSE,
+           cluster_args=list(),
            ...) {
+    fittedPars <- object$colTypes$fittedPars
+    #
     if (!is.list(verbose)) verbose <- as.list(verbose)
-    if (is.null(names(verbose))) names(verbose) <- c("most","movie")[seq_len(length(verbose))]
+    if (is.null(names(verbose))) names(verbose) <- c("most","movie","final","proj")[seq_len(length(verbose))]
     if (is.null(verbose$most)) verbose$most <- interactive()
+    if (is.null(verbose$final)) verbose$final <- (interactive() && length(fittedPars)<3L)
     if (is.null(verbose$movie)) verbose$movie <- FALSE
+    if (is.null(verbose$proj)) verbose$proj <- FALSE
+    #
     if (is.null(packages)) packages <- packages$add_simulation
+    if (is.null(cluster_args$spec)) cluster_args$spec <- nb_cores # which means that cluster_args$spec overrides nb_cores
     it <- 0L
     previous_cumul_iter <- max(object$logLs$cumul_iter)
-    RMSEs <- object$RMSEs
+    RMSEs <- get_from(object,"RMSEs") # LR_RMSE+ logLik() MSE ## 
     if (is.null(RMSEs)) RMSEs <- 1e10
     stat.obs <- attr(surfaceData,"stat.obs")
     if ( ! is.null(newsimuls) && maxit>1) stop("'maxit'>1 is incompatible with user-provided 'newsimuls'") 
-    if  ( ! any(is.na(RMSEs)) && all(RMSEs<precision)) {
-      cat("Target precision appears to be already reached.\n")
-      # return(object) 
-      ## nevertheless continue for one iteration 
+    if  ( target_reached <- ( ( ! (anyNA_RMSE <- anyNA(RMSEs)))  # but currently (with the reftable method at least) there is no NA in the RMSE table
+                              && all(RMSEs<precision))) {
+      cat("Target precision appears to be already reached in input object.\n") ## nevertheless continue for one iteration 
     }
     EIsampleFactor <- 30
     while( it==0L ##always perform one iteration on request  
-           || (it <maxit && (any(RMSEs>precision) || any(is.na(RMSEs)))) ) {
-      if (maxit>1L && verbose$most) cat(paste("iter = ",it+1L,":\n",sep=""))
-      fittedPars <- object$colTypes$fittedPars
+           || (it <maxit && ( ! target_reached)) ) {
+      if (anyNA_RMSE) { # does not occur, at least in routine reftable usage
+        message(paste0("CI bounds for some parameters not available: iterations will continue."))
+      }
+      if (maxit>1L && verbose$most) cat(crayon::yellow(paste("iter = ",it+1L," (total=",previous_cumul_iter+it+1L,"):\n",sep="")))
       logLname <- object$colTypes$logLname
       ## (1) Provide newsimuls
       if ( is.null(newsimuls)) {
@@ -106,18 +119,22 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         if (inherits(object,"SLik_j")) {
           freq_good <- list()
           samplingType <- Infusion.getOption("samplingType")
-          if (inherits(object$jointdens,"Mclust")) {
-            object$postdens <- .conditional_mclust(object$jointdens,fittedPars=fittedPars,given=stat.obs)
-          } else object$postdens <- .conditional_Rmixmod(object$jointdens,fittedPars=fittedPars,given=stat.obs)
-          locblob <- .rparam_from_SLik_j_post(object,frac=samplingType["posterior"]) 
-          freq_good$posterior <- locblob$freq_good
+          locblob <- .rparam_from_SLik_j(object,frac=samplingType["default"],fittedPars=fittedPars,level=level) 
           trypoints <- locblob$trypoints
-          locblob <- .rparam_from_SLik_j(object,frac=samplingType["uniform"],fittedPars=fittedPars,level=level) 
-          freq_good$uniform <- locblob$freq_good
-          trypoints <- rbind(trypoints,locblob$trypoints)
+          freq_good$default <- locblob$freq_good
+          if ((frac <- samplingType["posterior"])>0) {
+            if (inherits(object$jointdens,"Mclust")) {
+              object$postdens <- .conditional_mclust(object$jointdens,fittedPars=fittedPars,given=stat.obs)
+            } else object$postdens <- .conditional_Rmixmod(object$jointdens,#fittedPars=fittedPars,
+                                                           given=stat.obs)
+            locblob <- .rparam_from_SLik_j_post(object,frac=samplingType["posterior"]) 
+            freq_good$posterior <- locblob$freq_good
+            trypoints <- rbind(trypoints,locblob$trypoints)
+          } 
+          surfaceData <- object$logLs
         } else {
           if (verbose$most) cat("\nDesigning new parameter points (may be slow)...\n")
-          locblob <- .rparam_from_SLik(object, logLname, fittedPars, level, surfaceData, n, useEI, EIsampleFactor, useCI)
+          locblob <- .rparam_from_SLik(object, logLname, fittedPars, level, n, useEI, EIsampleFactor, useCI)
           trypoints <- locblob$trypoints
           surfaceData <- locblob$surfaceData
         }
@@ -127,11 +144,11 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         if (inherits(object,"SLik_j")) {
           newsimuls <- add_reftable(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most,
                                     control.Simulate=attr(surfaceData,"control.Simulate"),
-                                    nb_cores=nb_cores, packages=packages$add_simulation, env=env)     
+                                    cluster_args=cluster_args, packages=packages$add_simulation, env=env)     
         } else {
           newsimuls <- add_simulation(Simulate=Simulate,par.grid=trypoints,verbose=verbose$most,
                                       control.Simulate=attr(surfaceData,"control.Simulate"),
-                                      nb_cores=nb_cores, packages=packages$add_simulation, env=env)   
+                                      cluster_args=cluster_args, packages=packages$add_simulation, env=env)   
         }
       } else freq_good <- NULL ## _FIXME_ quick patch to avoid bug
       ## (2) Regenerate surface object 
@@ -147,44 +164,25 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
           if (is.null(attr(newsimuls,"LOWER"))) attr(newsimuls,"LOWER") <- attr(object$raw_data,"LOWER") # project(newsimuls,...) needs it
           raw_data <- .update_raw_data( object$raw_data, newsimuls)
           if (update_projectors) {
-            if (FALSE) { ## wrong bc does not control sample size well over iterations
-              nraw <- nrow(raw_data)
-              trainsize <- eval(Infusion.getOption("trainsize"))
-              trainsample <- sample(nraw,trainsize)
-              proj_names <- ls(object$projectors) # list of objects in environment
-              if ( length(proj_names)) {
-                for (st in proj_names) {
-                  projector <- get(st,envir = projectors)
-                  projcall <- attr(projector,"project_call")
-                  projcall$data <- raw_data[trainsample,names(projcall$data)]
-                  projector <- eval(projcall) 
-                  assign(st, value=projector, envir=projectors)
+            proj_names <- ls(object$projectors) # list of objects in environment
+            if ( length(proj_names)) {
+              for (st in proj_names) {
+                projector <- get(st,envir = projectors)
+                projcall <- attr(projector,"project_call")
+                projcall$verbose <- verbose$proj
+                projcall$data <- raw_data[,names(projcall$data)]
+                if ( (! update_warned) && ! inherits(projector, c("HLfit", "randomForest","ranger"))) {
+                  warning(paste0(c("You may be using a updating a projection using a method\n",
+                                   "for which Infusion has no built-in method to avoid overfitting (see help('project'))."))) 
+                  update_warned <<- TRUE
                 }
-              } else warning("non-NULL $projectors but ls() has zero length: check code or object")
-              jointEDF <- project(raw_data[ -trainsample, ],projectors=projectors) 
-              diff_n <- diff(attr(raw_data,"cumul_n"))
-              jointEDF$cumul_iter <- rep(seq(length(diff_n)),diff_n)[-trainsample]
-              stat.obs <- project(attr(stat.obs,"raw_data"),projectors=projectors)
-            } else {
-              proj_names <- ls(object$projectors) # list of objects in environment
-              if ( length(proj_names)) {
-                for (st in proj_names) {
-                  projector <- get(st,envir = projectors)
-                  projcall <- attr(projector,"project_call")
-                  projcall$data <- raw_data[,names(projcall$data)]
-                  if ( (! update_warned) && ! inherits(projector, c("HLfit", "randomForest","ranger"))) {
-                    warning(paste0(c("You may be using a updating a projection using a method\n",
-                                     "for which Infusion has no built-in method to avoid overfitting (see help('project'))."))) 
-                    update_warned <<- TRUE
-                  }
-                  projector <- eval(projcall) 
-                  assign(st, value=projector, envir=projectors)
-                }
-              } else warning("non-NULL $projectors but ls() has zero length: check code or object")
-              jointEDF <- project(raw_data,projectors=projectors) ## see how .predictWrap() uses oob predictions or newdata that match trainingdata...
-              jointEDF$cumul_iter <- c(object$logLs$cumul_iter, rep(previous_cumul_iter + it +1L, nrow(newsimuls)))
-              stat.obs <- project(attr(stat.obs,"raw_data"),projectors=projectors)
-            }
+                projector <-eval(projcall) #,envir=environment(projcall))
+                assign(st, value=projector, envir=projectors)
+              }
+            } else warning("non-NULL $projectors but ls() has zero length: check code or object")
+            jointEDF <- project(raw_data,projectors=projectors) ## see how .predictWrap() uses oob predictions or newdata that match trainingdata...
+            jointEDF$cumul_iter <- c(object$logLs$cumul_iter, rep(previous_cumul_iter + it +1L, nrow(newsimuls)))
+            stat.obs <- project(attr(stat.obs,"raw_data"),projectors=projectors)
             if (FALSE) { # only for diagnostic purposes...
               zzut <- (raw_data$mu-4)^2<0.01 & (raw_data$s2-1.25)^2<0.1
               plot(raw_data$var, jointEDF$VAR)
@@ -221,7 +219,7 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
         mc$verbose <- verbose$most
         mc$`stat.obs` <- attr(object$logLs,"stat.obs") ## bc otherwise mc$`stat.obs` stores a promise such as 'Sobs'
         # if (inherits(object,"SLikp")) arglist$refDensity <- object$refDensity 
-        if ( ! is.null(nb_cores)) mc$nb_cores <- nb_cores ## do not erase the value in the initial call stored in the object
+        if (length(unlist(cluster_args))) mc$cluster_args <- cluster_args ## do not erase the value in the initial call stored in the object
         if ( ! is.null(packages)) mc$packages <- packages$logL_method ## idem
         newlogLs <- eval(mc)
         if (verbose$most) cat ("\n")
@@ -285,23 +283,32 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
       # (3) maximization, new CIs, new MSEs
       # ! ! ! ! ! above calls to infer_surface() potentially change rownames of object$logLs relative to those of surfaceDate
       # bc infer_surface() -> make.names(). One solution is to get surfaceData from the new MSL object: 
-      object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most, eval_RMSEs=eval_RMSEs)
-      if (inherits(object,"SLikp")) {
-        surfaceData <- object$tailp
-      } else {
-        surfaceData <- object$logLs
-      } 
+      object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most, eval_RMSEs=eval_RMSEs, cluster_args=cluster_args)
       if (inherits(object,"SLik_j")) {attr(object$logLs,"freq_good") <- freq_good} 
-      MSEs <- object$RMSEs^2
-      if (verbose$movie) plot(object,...)
+      if (verbose$movie) {
+        plot(object, from_refine=TRUE, ...) # from which RMSEs may be NULLified 
+        if (! is.null(object$MSL$init_from_prof)) {
+          cat("Better likelihood found. Maximizing again...\n")
+          object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most, eval_RMSEs=eval_RMSEs, cluster_args=cluster_args)
+        } 
+      }
+      RMSEs <- get_from(object,"RMSEs") # LR_RMSE+ logLik() MSE ## 
+      target_reached <- ( ( ! (anyNA_RMSE <- anyNA(RMSEs)))  # but currently (with the reftable method at least) there is no NA in the RMSE table
+                          && all(RMSEs<precision))
       it <- it+1
       newsimuls <- NULL ## essential for the test
     } ## end while() loop
-    if (verbose$most) {
-      plot(object,...)
+    if (( ! verbose$movie) && verbose$final) {
+      plot(object, from_refine=TRUE, ...) # from which RMSEs may be NULLified 
+      if (! is.null(object$MSL$init_from_prof)) {
+        cat("Better likelihood found. Maximizing again...\n")
+        object <- MSL(object, CIs=useCI, level=level, verbose=verbose$most, eval_RMSEs=eval_RMSEs, cluster_args=cluster_args)
+      } 
+    }
+    if (verbose$most) { # as meant by the doc.) 
       if  ( any(is.na(RMSEs))) {
         cat("Target precision could not be ascertained.\n")
-      } else if (is.null(object$RMSEs)) {
+      } else if (is.null(get_from(object,"RMSEs"))) {
         cat("Precision has not been evaluated. Use argument 'eval_RMSEs=TRUE' to force its computation.\n")
       } else if  ( any(RMSEs>precision) ) {cat("\nTarget precision does not appear to be reached.\n")}
     }

@@ -3,12 +3,12 @@
 .Infusion.data$options <- list(## should be documented: 
                                LRthreshold= - qchisq(0.999,df=1)/2, 
                                nRealizations=1000,
-                               nbCluster= quote(seq(ceiling(nrow(data)^0.3))), # M O D I F Y doc if this is modified !
-                               using="Rmixmod", ## or ""mclust
-                               infer_logL_method="infer_logL_by_Rmixmod", # infer_logL_by_mclust,
-                               #infer_logL_method="infer_logL_by_mclust", ## string for clusterExport !
-                               mixmodGaussianModel="Gaussian_pk_Lk_Dk_A_Dk", ## shape is constant but volume and orientation are free
-                               mclustModel="VEV", ## equivalent to default mixmodGaussianModel
+                               nbCluster= quote(seq(ceiling(nrow(data)^0.3))), # M O D I F Y doc if this is modified ! # note that functiosn such as goftest handle only this format, not a list
+                               mixturing="Rmixmod",
+                               #using="Rmixmod", ## or ""mclust
+                               #infer_logL_method="infer_logL_by_Rmixmod", # "infer_logL_by_mclust", ## string for clusterExport !
+                               mixmodGaussianModel="Gaussian_pk_Lk_Ck", # all free vs # "Gaussian_pk_Lk_Dk_A_Dk", # shape is constant but volume and orientation are free
+                               mclustModel="VVV", ## "VEV", ## equivalent to default mixmodGaussianModel
                                precision=0.1,
                                #
                                projTrainingSize=quote(.trainsize_fn(method,stats)),
@@ -22,6 +22,7 @@
                                ## partly doc'ed and does not need more
                                nb_cores=NULL,
                                ## undocumented
+                               constrOptim=FALSE,
                                binningExponent=0.5,
                                zeromargin=0.1,
                                logLname="logL",
@@ -33,14 +34,16 @@
                                rparamfn="rparam", ## allows choice of function
                                fitmeCondition=quote(TRUE),
                                # Rmixmod controls
-                               criterion="AIC",
-                               strategy=quote(mixmodStrategy()), # nbIterationInAlgo=200
+                               criterion="AIC", # criterio for selection of number of clusters (not BIC by default!)
+                               #strategy=quote(.do_call_wrap("mixmodStrategy",arglist=list(),pack="Rmixmod")), ## not doc'ed...
+                               strategy=quote(Rmixmod::mixmodStrategy()), ## given Rmixmod in Suggests
                                mixmodSeed=123,
                                clu_optimizer="",
                                # trypoints controls
-                               samplingType=c(posterior=0.8,uniform=0.2),
-                               expansion=1
-                               )
+                               samplingType=c(default=1,posterior=0),
+                               expansion=1,
+                               maxeval=quote(10^(3+(log(length(initvec))-log(5))/log(4))) # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
+)
 
 
 Infusion.options <- function(...) {
@@ -70,7 +73,7 @@ Infusion.getOption <- function (x) {Infusion.options(x)[[1]]}
   packageStartupMessage("Infusion (version ", version, 
                         ") is loaded.", 
                         "\nType 'help(Infusion)' for a short introduction,",
-                        "\nand see http://kimura.univ-montp2.fr/~rousset/Infusion.htm",
+                        "\nand see https://kimura.univ-montp2.fr/~rousset/Infusion.htm",
                         "\nfor more documentation.")
 }
 

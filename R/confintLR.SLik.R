@@ -26,7 +26,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
   if (fittedparamnbr == 1L) {
     v[parm] <- value
     if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-    resu <- predict(fitted,newdata=v)
+    resu <- predict(fitted,newdata=v, which="lik")
   } else { 
     profiledNames <- names(fitted$lower)
     profiledNames <- setdiff(profiledNames, c(parm,fixedPars)) # [which( ! (profiledNames %in% parm))] 
@@ -36,14 +36,14 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
     plogL <- function(pparv) {
       v[profiledNames] <- pparv
       if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-      return((predict(fitted,newdata=v))) ## removed log...   
+      return(( - predict(fitted,newdata=v, which="lik"))) ## removed log...   
     }
-    ## init = (plower+pupper)/2 piégé par des maxi locaux, probablement moins le cas si on part de la uppersurf...
-    ML <- optim(fitted$MSL$MSLE[profiledNames],plogL,control=list(fnscale=-1,parscale=pupper-plower),
-                lower=plower,upper=pupper,method="L-BFGS-B")
+    optr <- .safe_opt(fitted$MSL$MSLE[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE)
     if(return.optim) {
-      return(ML)
-    } else return(ML$value) 
+      optr$value <- - optr$objective 
+      optr$par <- optr$solution
+      return(optr)
+    } else return(- optr$objective) 
   }
 }
 
@@ -75,7 +75,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
     objectivefn1D <- function(CIvarval) {
       v[parm] <- CIvarval
       if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-      predict(object,newdata=v)+shift ## removed log... 
+      predict(object,newdata=v, which="safe")+shift ## removed log... 
     }
     objectivefn <- objectivefn1D
   } else { 
@@ -89,16 +89,14 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
       plogL <- function(pparv) {
         v[profiledNames] <- pparv
         if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-        return((predict(object,newdata=v))) ## removed log...   
+        return(( - predict(object,newdata=v, which="safe"))) ## removed log...   
       }
-      ## init = (plower+pupper)/2 piégé par des maxi locaux, probablement moins le cas si on part de la uppersurf...
-      ML <- optim(object$MSL$MSLE[profiledNames],plogL,control=list(fnscale=-1,parscale=pupper-plower),
-                  lower=plower,upper=pupper,method="L-BFGS-B")
-      ## optim(...plogL...) maximizes profile likelihood
-      #print(ML)
+      optr <- .safe_opt(object$MSL$MSLE[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE)
       if(return.optim) {
-        return(ML)
-      } else return(ML$value+shift) ## then returns shifted value for uniroot
+        optr$value <- - optr$objective 
+        optr$par <- optr$solution
+        return(optr)
+      } else return(- optr$objective+shift) ## then returns shifted value for uniroot
     }
     objectivefn <- objectivefnmultiD    
   }

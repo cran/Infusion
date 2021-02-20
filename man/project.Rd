@@ -68,7 +68,7 @@ get_projection(...) # alias for project.default
   \code{<project result>} may indeed be the return object of a \code{project} call. 
 }
   \item{verbose}{
-Whether to print some information or not. In particular, \code{TRUE}, true-vs.-predicted diagnostic plots will be drawn if any of the following methods have been used: \code{"REML"}, \code{"GCV"}, or a call to \code{caret::train}.
+Whether to print some information or not. In particular, \code{TRUE}, true-vs.-predicted diagnostic plots will be drawn for projection methods \dQuote{known} by Infusion (notably \code{"ranger"}, \code{"keras::keras.engine.training.Model"}, \code{"randomForest"}, \code{"GCV"}, \code{caret::train}).
 }
   \item{\dots}{
 Further arguments passed to or from other functions.
@@ -80,7 +80,7 @@ Further arguments passed to or from other functions.
   \code{<parameter> ~ 1+ Matern(1|<stat1>+...+<statn>)}. This approach allows in principle to produce arbitrarily 
   complex predictors (given sufficient input) and avoids overfitting in the same way as restricted likelihood methods avoids overfitting in LMM. REML methods are then used by default to estimate the smoothing parameters. However, faster methods may be required, and random forests by \code{ranger} is the default method, if that package is installed (\code{randomForest} can also be used). Some other methods are possible (see below).    
   
-  Machine learning methods such as random forests overfit, \emph{except if} out-of-bag predictions are used. When they are not, the bias is manifest in the fact that using the same simulation table for learning the projectors and for other steps of the analyses tend to lead to too narrow confidence regions. This bias disappears over iterations of \code{\link{refine}} when the projectors are kept constant. \code{Infusion} avoid this bias by using out-of-bag predictions when relevant, when \code{ranger} and \code{randomForest} are used. But it provides no code handing that problem for other machine-learning methods. Then, users should cope with that problems, and at a minimum should not update projectors in every iteration (the \dQuote{\href{http://kimura.univ-montp2.fr/~rousset/Infusion/InfusionIntro.pdf}{Gentle Introduction to Infusion} may contain further information about this problem}).       
+  Machine learning methods such as random forests overfit, \emph{except if} out-of-bag predictions are used. When they are not, the bias is manifest in the fact that using the same simulation table for learning the projectors and for other steps of the analyses tend to lead to too narrow confidence regions. This bias disappears over iterations of \code{\link{refine}} when the projectors are kept constant. \code{Infusion} avoid this bias by using out-of-bag predictions when relevant, when \code{ranger} and \code{randomForest} are used. But it provides no code handing that problem for other machine-learning methods. Then, users should cope with that problems, and at a minimum should not update projectors in every iteration (the \dQuote{\href{https://kimura.univ-montp2.fr/~rousset/Infusion/InfusionIntro.pdf}{Gentle Introduction to Infusion} may contain further information about this problem}).       
   
   To keep REML computation reasonably fast, the \code{trainingsize} and \code{knotnbr} arguments determine respectively the size of the subset used to estimate the smoothing parameters and the size of the subset defining the predictor given the smoothing parameters.  REML fitting is already slow for data sets of this size (particularly as the number of predictor variables increase).
   
@@ -149,6 +149,6 @@ slik <- infer_surface(densb) ## infer a log-likelihood surface
 slik <- MSL(slik) ## find the maximum of the log-likelihood surface
 }
 if (Infusion.getOption("example_maxtime")>500) {
-slik <- refine(slik,10) ## refine iteratively
+slik <- refine(slik,10, update_projectors=TRUE) ## refine iteratively
 }
 }

@@ -11,7 +11,7 @@ Plot SLik or SLikp objects
                     plot.title = NULL, ...)
 \method{plot}{SLik_j}(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                       color.palette = NULL, plot.axes = NULL, 
-                      plot.title = NULL, ...)
+                      plot.title = NULL, from_refine=FALSE, ...)
 %\method{plot}{SLikp}(x, y, filled=FALSE, log.=TRUE,...)
 }
 \description{
@@ -43,6 +43,9 @@ statements which replace the default titles to the main plot (see Details).
 }
 \item{plot.axes}{	
 statements which replace the default axes on the main plot (see Details). 
+}
+\item{from_refine}{	
+For programming purposes, not documented. 
 }
   \item{\dots}{
 further arguments passed to or from other methods (currently can be used to pass a few arguments such as \code{map.asp} in all cases, 

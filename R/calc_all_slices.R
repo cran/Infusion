@@ -33,7 +33,7 @@
       grille <- expand.grid(grillelist) 
       grille <- cbind(grille,t(fixedVals))
       grille <- grille[,fittedPars] ## simply reorder grille elements according to fittedNames order
-      z <- predict(object, grille)
+      z <- predict(object, grille, which="safe")
       xyz <- as.surface(grillelist, z, order.variables = "xy")
       main <- paste("logL slice for",paste(fixedPars,signif(fixedVals,4),sep="=",collapse=", "))
       varVals <- object$MSL$MSLE[c(xvar,yvar)]

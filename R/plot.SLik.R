@@ -36,6 +36,7 @@ plot.SLik <-function(x,y,filled=FALSE,
   if (is.null(maxlogL)) stop("plot.SLik plots likelihood ratios, hence it requires the ML to have been computed by MSL(.)\n")
   Ztransf <- function(Z) {exp(Z-maxlogL)}
   np <- length(fittedPars)
+  has_CI_info <- ( ( ! is.null(object$CIobject)) && is.null(object$CIobject$warn))
   if (np==1L) {
     xf <- object$obspred[,fittedPars]
     yf <- Ztransf(object$obspred[,attr(object$obspred,"fittedName")]) ## < 1
@@ -50,7 +51,7 @@ plot.SLik <-function(x,y,filled=FALSE,
          ylim=ylim)
     points(x=x,y=y,pch=20,cex=0.5,col="red")
     points(object$MSL$MSLE,1,pch="+")
-    if (!is.null(object$CIobject)) {
+    if (has_CI_info) {
       yci <- rep(exp(-qchisq(0.95,1)/2),NROW(object$CIobject$bounds))
       points(object$CIobject$bounds,y=yci,pch="+")
     }
@@ -66,8 +67,8 @@ plot.SLik <-function(x,y,filled=FALSE,
         decos <- quote({if (!is.null(object$latestPoints)) points(object$logLs[object$latestPoints,fittedPars],pch=".",cex=2);
           points(object$logLs[ ! object$logLs[,"isValid"],fittedPars],pch=20,cex=0.8);
           eval(decorations);
-          if (!is.null(object$CIobject)) points(object$CIobject$bounds,pch=19,col="red",cex=1.50);
-          if (!is.null(object$CIobject)) points(object$CIobject$bounds,pch=20,col="white",cex=0.75);
+          if (has_CI_info) points(object$CIobject$bounds,pch=19,col="red",cex=1.50);
+          if (has_CI_info) points(object$CIobject$bounds,pch=20,col="white",cex=0.75);
           points(t(object$MSL$MSLE),pch=19,cex=1.50,col="cyan");
           points(t(object$MSL$MSLE),pch=20,cex=0.75,col="white");
         }
@@ -93,7 +94,7 @@ plot.SLik <-function(x,y,filled=FALSE,
         decos <- quote({if (!is.null(object$latestPoints)) points(object$logLs[object$latestPoints,fittedPars],pch=".",cex=2);
           points(object$logLs[ ! object$logLs[,"isValid"],fittedPars],pch=20,cex=0.8);
           eval(decorations);
-          if (!is.null(object$CIobject)) points(object$CIobject$bounds,pch="+",col="black",cex=1.50);
+          if (has_CI_info) points(object$CIobject$bounds,pch="+",col="black",cex=1.50);
           points(t(object$MSL$MSLE),pch=3,cex=1.5,lwd=3); ## 3 rather than "+" for exact positioning
           points(t(object$MSL$MSLE),pch=3,col="white",cex=1.25);
         }

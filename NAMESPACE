@@ -12,9 +12,9 @@ importFrom("proxy", "dist")
 #importFrom("Rmixmod", "mixmodCluster", "mixmodStrategy", "mixmodGaussianModel", "plotCluster")
 importFrom("spaMM", "corrHLfit", "MaternCorr", "mapMM", "fitme", "spaMM.colors", "fixef", "filled.mapMM", 
            "spaMM.filled.contour", "HLCor", "HLfit", "spaMMplot2D", "get_residVar") ## doc'ed fns
-importFrom("spaMM", "get_ranPars") 
-importFrom("spaMM", "makeTicks") ## undoc fns
-importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", 
+importFrom("spaMM", "get_ranPars", "spaMM.getOption") 
+importFrom("spaMM", "makeTicks", ".safe_opt") ## undoc fns
+importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", "quantile",
            "predict", "qchisq", "runif", "uniroot", "binomial", "poisson", "constrOptim", "dchisq", "profile", "confint", "rnorm")
 importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar", "packageDescription", "getS3method")
 importFrom("viridis", "viridis")
@@ -35,8 +35,11 @@ S3method(summary, logLs)
 S3method(plot, SLikp)
 S3method(plot, SLik_j)
 S3method(plot,MixmodResults)
+S3method(plot, dMixmod)
 S3method(print, SLikp)
 S3method(summary, SLikp)
+S3method(logLik,SLik)
+S3method(logLik,SLik_j)
 S3method(confint,SLik)
 S3method(confint,SLik_j)
 S3method(confint,SLikp)
@@ -57,3 +60,7 @@ S3method(infer_surface,tailp)
 S3method(calc.lrthreshold,SLik)
 S3method(calc.lrthreshold,SLikp)
 S3method(calc.lrthreshold,default)
+S3method(get_from, SLik)
+S3method(get_from, SLik_j)
+S3method(get_from, default)
+S3method("[", reftable)
