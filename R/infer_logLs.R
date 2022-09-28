@@ -85,7 +85,7 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   if (is.infinite(kappa(XtX))) {
     warning("The summary statistics are collinear. Clustering will likely fail. Remove some summary statistic(s).")
   }
-  fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod
+  fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod # using function's default seed =Infusion.getOption("mixmodSeed")
   if (length(fit@nbCluster)==0L) { ## likely degenerate distribution
     checkfix <- apply(locEDF,2,var)==0
     ucheckfix <- apply(locEDF[,checkfix,drop=FALSE],2,unique)
@@ -142,7 +142,7 @@ infer_logLs <- function(object,
   Sobs.densities <- vector("list", length(object)) 
   method_arglist <- list(stat.obs=stat.obs,logLname=logLname,verbose=verbose)
   #
-  if (is.null(cluster_args$spec)) cluster_args$spec <- nb_cores # which means that cluster_args$spec overrides nb_cores
+  cluster_args <- .set_cluster_type(cluster_args, nb_cores) # PSOCK vs FORK
   cores_info <- .init_cores(cluster_args) ###### , ...)
   # make sure that a user-defined nondefault method is converted to a string: 
   if ( ! is.null(cores_info$cl) && ! is.null(nondefault <- match.call()$method)) method <- paste(nondefault) 

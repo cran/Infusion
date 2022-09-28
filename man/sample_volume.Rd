@@ -19,12 +19,12 @@ sample_volume(object, n = 6, useEI, vertices=NULL,
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{
-an \code{SLik} object
+an \code{SLik} or \code{SLik_j} object
 }
   \item{n}{
 The number of parameter points to be produced 
 }
-  \item{useEI}{ List of booleans, each determining whether to use an \dQuote{expected improvement} (EI) criterion (e.g. Bingham et al., 2014) to select candidate parameter points to better ascertain a particular focal point. The elements \code{max}, \code{profileCI} and \code{rawCI} determine this for three types of focal points, respectively the MSL estimate, profile CI bounds, and full-dimensional bounds. When EI is used, \code{n} points with best EI are selected among \code{tryn} points randomlygenerated in some neighborhood of the focal point. 
+  \item{useEI}{ List of booleans, each determining whether to use an \dQuote{expected improvement} (EI) criterion (e.g. Bingham et al., 2014) to select candidate parameter points to better ascertain a particular focal point. The elements \code{max}, \code{profileCI} and \code{rawCI} determine this for three types of focal points, respectively the MSL estimate, profile CI bounds, and full-dimensional bounds. When EI is used, \code{n} points with best EI are selected among \code{tryn} points randomly generated in some neighborhood of the focal point. 
 }
 \item{vertices}{Points are sampled within a convex hull defined by \code{vertices}. By default, these vertices are taken from \code{object$fit$data}.  
 }

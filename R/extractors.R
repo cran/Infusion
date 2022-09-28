@@ -4,7 +4,7 @@
   return(object[[which]])
 }
   
-get_from.SLik <- function(object, which, raw=FALSE, ...) {
+get_from.SLik <- function(object, which, raw=FALSE, force=FALSE, ...) {
   if (raw) return(object[[which]]) # per the doc.
   ###  all (! raw) cases
   ## Specific 'which' for old versions 
@@ -12,9 +12,25 @@ get_from.SLik <- function(object, which, raw=FALSE, ...) {
     if (which=="MSL") {
       return(as.list(object[["MSL"]]))
     } else if (which=="par_RMSEs") {
-      return(object[["par_RMSEs"]]$par_RMSEs)
+      resu <- object[["par_RMSEs"]]$par_RMSEs
+      if (force && is.null(resu)) {
+        local_slik <- MSL(object, eval_RMSEs=TRUE, CIs=TRUE) # both needed for par_RMSEs
+        local_env <- local_slik[["par_RMSEs"]]
+        outer_env <- object[["par_RMSEs"]] 
+        for (st in ls(local_env)) assign(st,value = local_env[[st]],envir = outer_env)
+        resu <- object[["par_RMSEs"]]$par_RMSEs
+      }
+      return(resu)
     } else if (which=="RMSEs") {
-      return(object[["RMSEs"]]$RMSEs)
+      resu <- object[["RMSEs"]]$RMSEs
+      if (force && is.null(resu)) {
+        local_slik <- MSL(object, eval_RMSEs=TRUE, CIs=FALSE)
+        local_env <- local_slik[["RMSEs"]]
+        outer_env <- object[["RMSEs"]] 
+        for (st in ls(local_env)) assign(st,value = local_env[[st]],envir = outer_env)
+      }
+      resu <- object[["RMSEs"]]$RMSEs
+      return(resu)
     }
   }
   # for all versions
@@ -80,3 +96,18 @@ logLik.SLik_j <- logLik.SLik
 }
 
 #.SLR(slik)
+
+"summLik" <- function(object, parm, data, ...) UseMethod("summLik") ## makes it easy to develop new inference methods
+
+summLik.SLik_j <- function(object, parm, data=t(attr(object$logLs,"stat.obs")), log=TRUE, which="lik", ...) {
+  predict.SLik_j(object, 
+                 newdata=parm, ## requests new fittedPars values! 
+                 log=log, 
+                 which=which, # may be still preferable, to "safe", for drawing new points
+                 tstat= data, # 1-row matrix...
+                 ...)
+}
+
+# has SLikp and SLik method
+
+`summLik.default` <- function(object, parm, data=t(attr(object$logLs,"stat.obs")), ...) predict(object, newdata=parm, tstat=data, ...)

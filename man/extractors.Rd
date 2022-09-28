@@ -39,7 +39,7 @@ An object of class \code{SLik} or  \code{SLik_j};
 \code{summary} and \code{summary} return the object invisibly. They print details of the fits in a convenient form.
 }
 \seealso{
-See \code{\link{get_from}} for a more general interface for extracting elements from Infusion results.
+See \code{\link{get_from}} for a more general interface for extracting elements from Infusion results, and \code{\link{summLik}} for using a fit object to evaluate the likelihood function for distinct parameter values and even distinct data.
 }
 \note{See workflow example in \code{\link{example_reftable}}.}
 \examples{

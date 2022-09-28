@@ -8,10 +8,10 @@ Plot SLik or SLikp objects
 \usage{
 \method{plot}{SLik}(x, y, filled = FALSE, decorations = NULL,
                     color.palette = NULL, plot.axes = NULL, 
-                    plot.title = NULL, ...)
+                    plot.title = NULL, plot.slices=TRUE, ...)
 \method{plot}{SLik_j}(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                       color.palette = NULL, plot.axes = NULL, 
-                      plot.title = NULL, from_refine=FALSE, ...)
+                      plot.title = NULL, from_refine=FALSE, plot.slices=TRUE, ...)
 %\method{plot}{SLikp}(x, y, filled=FALSE, log.=TRUE,...)
 }
 \description{
@@ -36,7 +36,7 @@ The smaller black dots mark points added in the latest iteration, if \code{refin
 %  Whether to log transform the response variable (i.e, a frequency). Zero frequency values are %converted to half the minimum nonzero frequency value before log transformation. 
 %}
   \item{color.palette}{
-  Either NULL or a function that can replace the default color function used by \code{plot.SLik}. Thefunction must have a single argument, giving the number of color levels. 
+  Either NULL or a function that can replace the default color function used by \code{plot.SLik}. The function must have a single argument, giving the number of color levels. 
 }
 \item{plot.title}{	
 statements which replace the default titles to the main plot (see Details). 
@@ -46,6 +46,9 @@ statements which replace the default axes on the main plot (see Details).
 }
 \item{from_refine}{	
 For programming purposes, not documented. 
+}
+\item{plot.slices}{	
+boolean: whether to plot \dQuote{slices} of the summary-likelihood surface for pairs of parameters (p1,p2), when more than two parameters are fitted. In such plots the additional parameters p3, p4... are fixed to their estimates [in contrast to profile plots where p3, p4... take distinct values for each (p1,p2), maximizing the function for each (p1,p2)].  
 }
   \item{\dots}{
 further arguments passed to or from other methods (currently can be used to pass a few arguments such as \code{map.asp} in all cases, 
@@ -58,10 +61,10 @@ or \code{variances} to \code{filled.mapMM}).
 }
 \examples{
 \dontrun{
-## Using 'slik' object from the example in help("Infusion-package") 
-  plot(slik, filled=TRUE,
-       plot.title=quote(title("Summary-likelihood-ratio surface",
-                              xlab=expression(mu),
-                              ylab=expression(sigma^2))))
+## Using 'slik_j' object from the example in help("example_reftable") 
+plot(slik_j,filled=TRUE,
+     plot.title=quote(title("Summary-likelihood-ratio surface",
+                             xlab=expression(mu),
+                             ylab=expression(sigma^2))))
 }
 }

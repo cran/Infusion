@@ -91,10 +91,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
     } else { ## handles all HLfit methods
       init.corrHLfit <- list(rho=1/(upper-lower))
       if (identical(Infusion.getOption("ESSAI"),TRUE)) {
-        if (eval(Infusion.getOption("fitmeCondition"))) {
-          thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4),method=method, init=init.corrHLfit) 
-        } else thisfit <- corrHLfit(form,data=purgedlogLs, ranFix=list(nu=4),
-                                    HLmethod=method, init.corrHLfit=init.corrHLfit)
+        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4),method=method, init=init.corrHLfit) 
         # le code alternatif devrait marcher mais est complique et fragile
       } else {
         ## uses prior weights to reduce influence of extreme points but the prior weight computation is fragile.
@@ -108,12 +105,12 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
         maxdlogL <- max(dlogL)
         priorwName <- .makenewname("priorw",names(purgedlogLs)) ## name not already in the data
         purgedlogLs[[priorwName]] <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
-        # then build a string without "priorwName" in it (but the value of priorwName) (2) convert to expression by parse() (3) eval
-        if (eval(Infusion.getOption("fitmeCondition"))) {
-          thisfit <- eval(parse(text=paste("fitme(form,data=purgedlogLs, fixed=list(nu=4),", 
-                                           "method=method, init=init.corrHLfit,prior.weights=",priorwName,")"))) 
-        } else thisfit <- eval(parse(text=paste("corrHLfit(form,data=purgedlogLs, ranFix=list(nu=4),init.HLfit=list(phi=init.phi),", 
-                                                "HLmethod=method, init.corrHLfit=init.corrHLfit,prior.weights=",priorwName,")")))
+        ## ## then build a string without "priorwName" in it (but the value of priorwName) (2) convert to expression by parse() (3) eval
+        ## thisfit <- eval(parse(text=paste("fitme(form,data=purgedlogLs, fixed=list(nu=4),",
+        ##                                   "method=method, init=init.corrHLfit,prior.weights=",priorwName,")")))
+        # Much better with weights.form
+        weights.form <- as.formula(paste("~", priorwName))
+        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4), method=method, init=init.corrHLfit, weights.form=weights.form)
       }
       RMSE <- sqrt(thisfit$phi)
       if (thisfit$spaMM.version<"2.4.26") {

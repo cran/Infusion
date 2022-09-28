@@ -47,3 +47,7 @@ calc.lrthreshold.SLik <- function(object,dlr=NULL,verbose=interactive(),...) {
   ## expand beyond *predicted* dlr threshold  ## this should be disconnected from GV$hullExpandFactor
   return( object$MSL$maxlogL + dlr*1.2 -probErr )
 }
+
+
+
+

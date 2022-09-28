@@ -1,47 +1,97 @@
+.get_gof_stats <- function(projectors, rawstatempdist, 
+                           gdimfn=.Infusion.data$options$gof_nstats_fn, 
+                           importance_fn=importance
+                           ) {
+  stats <- unique(unlist(lapply(projectors, attr, which="stats"))) ## all stats used by all projectors
+  rawstatempdist <- rawstatempdist[,stats, drop=FALSE] # some simulated raw stats might not have been used in the projections
+  
+  ## We need to check for linear redundancies in the raw stats 
+  rawstatempdist <- check_raw_stats(rawstatempdist,statNames = stats,remove = TRUE, verbose=TRUE) # silent if not problem detected, but still verbose otherwise
+  stats <- colnames(rawstatempdist)
+  ##
+  projnames <- ls(projectors)
+  #allranger <- all(sapply(projnames, function(v) inherits( projectors[[v]],"ranger")))
+  imp_methods <- unlist(lapply(projnames, function(v) projectors[[v]]$"importance"))
+  if (length(imp_methods)==length(projnames)) {
+    if (length(u_imp <- unique(imp_methods))==1L) {
+      if ( ! u_imp %in% c("impurity_corrected","permutation")) {
+        warning("Importance method not 'permutation' (preferred) nor 'impurity_corrected': user is responsible to make sure that GoF test will be meaningful.",
+                immediate.=TRUE)
+      } # In particular, the importance measure must indeed increase with importance...
+    } else stop("Different importance methods used for different projectors, cannot be used together for GoF test.")
+  } else stop("Variable importance method not found for all projectors.")
+  # rel_imps are importances for each projector, standardized by the RMSE of oob prediction for each projector
+  rel_imps <- try(lapply(projnames, function(v) importance_fn(projectors[[v]])/projectors[[v]]$prediction.error), silent=TRUE)
+  if ( ! inherits(rel_imps,"try-error")) { 
+    for (it in seq_along(rel_imps)) rel_imps[[it]] <- rel_imps[[it]][intersect(names(rel_imps[[it]]),stats)]
+    rel_imps <- do.call(unlist,list(rel_imps)) # list() important here...
+    nr <- nrow(rawstatempdist)
+    gdim <- gdimfn(nr=nr, nstats=length(stats))
+    # find the minimum importance of each raw stat over projectors, and sort raw stats by increasing importance:
+    stats <- names(head(sort(sapply(unique(names(rel_imps)), 
+                                    function(v) {min(rel_imps[grep(v, names(rel_imps), fixed=TRUE)] )})),
+                        n = gdim))
+  }
+  stats
+}
+
+
 goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
                     nb_cores=NULL, Simulate=attr(object$logLs,"Simulate"),
                     packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env"),
-                    verbose=interactive()
-                    ) {
+                    verbose=interactive(),
+                    cl_seed=.update_seed(object),
+                    get_gof_stats=.get_gof_stats
+) {
   feasible <- FALSE
   stat_obs <- t(attr(object$logLs,"stat.obs"))
-  if (method=="mixture") { # not a valid test of goodness of fit !
+  if (method=="mixture") { # Result won't be a valid test of goodness of fit !
     statdens <- .conditional_Rmixmod(object$jointdens,#fittedPars=object$colTypes$statNames,
                                      given=object$MSL$MSLE, expansion=1) # stat dens|ML parameter estimates
     plotmain <- "Obs. vs. mixture model"
     statempdist <- .simulate.MixmodResults(statdens, nsim=1L, size=nsim, drop=TRUE) # directly in projected space
     plotframe <- as.data.frame(rbind(statempdist,stat_obs))
-  } else { # 
+  } else { # actual method: requires resimulation of processus
+    if (is.null(Simulate)) {
+      stop("'Simulate' function no available. Hint: its default value in goftest() call\n     assumes it was made available through the original add_reftable() call.")
+    }
     MSLErep <- t(object$MSL$MSLE)
     MSLErep <- as.data.frame(MSLErep[rep(1,nsim),])
     MSLErep <- cbind(MSLErep,object$colTypes$fixedPars) ## add fixedPars for simulation
-    MSLErep <- MSLErep[,object$colTypes$allPars,drop=FALSE] ## column reordering and remove polluting things (cumul_iter in fixedPars!: _F I X ME_)
+    MSLErep <- MSLErep[,object$colTypes$allPars,drop=FALSE] ## column reordering and remove polluting things (cumul_iter in fixedPars!: _F I X M E_)
     if (inherits(object,"SLik_j")) {
-      statempdist <- add_reftable(Simulate=Simulate, par.grid=MSLErep, verbose=verbose,
+      rawstatempdist <- add_reftable(Simulate=Simulate, par.grid=MSLErep, verbose=verbose,
                                 control.Simulate=attr(object$logLs,"control.Simulate"),
-                                nb_cores=nb_cores, packages=packages$add_simulation, env=env)     
+                                nb_cores=nb_cores, packages=packages$add_simulation, env=env,
+                                cl_seed=cl_seed)     
     } else {
-      statempdist <- add_simulation(Simulate=Simulate, par.grid=MSLErep,verbose=verbose,
+      rawstatempdist <- add_simulation(Simulate=Simulate, par.grid=MSLErep,verbose=verbose,
                                   control.Simulate=attr(object$logLs,"control.Simulate"),
-                                  nb_cores=nb_cores, packages=packages$add_simulation, env=env)   
+                                  nb_cores=nb_cores, packages=packages$add_simulation, env=env,
+                                  cl_seed=cl_seed)   
     }
+    rawstatempdist <- na.omit(rawstatempdist)
     if ( ! is.null(projectors <- object$projectors)) {
       plotmain <- "Obs. vs. process: summ.stat. residuals."
       feasible <- TRUE
-      rawstatempdist <- statempdist
-      statempdist <- project(rawstatempdist,projectors=projectors)
+      statempdist <- project(rawstatempdist,projectors=projectors) # if composite param were fitted, the projectors are predictors of composite params
       statempdist <- as.matrix(statempdist[,object$colTypes$statNames,drop=FALSE])
-      if (is.null(stats)) stats <- unique(unlist(lapply(projectors, attr, which="stats"))) ## all stats used by all projectors
+      
+      # A good GoF stats should be defined by consideration of some alternative model, but this concept is not available here
+      if (is.null(stats)) stats <- .get_gof_stats(projectors, rawstatempdist=rawstatempdist) # trying to get variable with least importance
+      if (verbose) print(paste0("The following raw summary statistics were retained for the GoF test:\n",
+                                  paste(stats,collapse=", ")))
+      #
       rawstatempdist <- rawstatempdist[,stats,drop=FALSE]
-      statsFitToProj <- qr.solve(statempdist,rawstatempdist)
+      statsFitToProj <- qr.solve(statempdist,rawstatempdist) # regression to projected stats (potentially predictors of composite params)
       colnames(statsFitToProj) <- stats
-      gofStats <- rawstatempdist - statempdist %*% statsFitToProj
-      gofObsStat <- attr(stat_obs,"raw_data")[stats] - stat_obs %*% statsFitToProj
+      gofStats <- rawstatempdist - statempdist %*% statsFitToProj # residuals from fit to projected stats
+      gofObsStat <- attr(stat_obs,"raw_data")[stats] - stat_obs %*% statsFitToProj # residuals idem
       plotframe <- as.data.frame(rbind(gofStats,gofObsStat))
       colnames(plotframe) <- paste0("Res(",colnames(plotframe),")")
     } else {
       plotmain <- "Obs. vs. process"
-      statempdist <- statempdist[,plot.,drop=FALSE]
+      statempdist <- rawstatempdist[,plot.,drop=FALSE]
       plotframe <- as.data.frame(rbind(statempdist,stat_obs))
     }
   }
@@ -65,22 +115,24 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
          bg="orange")
   }
   if (feasible) {
-    nbCluster <- eval(Infusion.getOption("nbCluster"),list2env(list(data=gofStats)))
+    safe_nbCluster <- get_nbCluster_range(projdata=gofStats)
     using <- Infusion.getOption("mixturing")
     gofStats <- as.data.frame(gofStats)
     if (using=="mclust") {
       if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
-      models <- vector("list",length(nbCluster))
-      for (it in seq_along(nbCluster)) {
+      models <- vector("list",length(safe_nbCluster))
+      for (it in seq_along(safe_nbCluster)) {
         models[[it]] <- .do_call_wrap("densityMclust",
                                       list(data=gofStats,modelNames=Infusion.getOption("mclustModel"), 
-                                           G=nbCluster[it], verbose=FALSE),
+                                           G=safe_nbCluster[it], verbose=FALSE),
                                       pack="mclust")
       }
       gofdens <- .get_best_mclust_by_IC(models) 
     } else {
+      # If we're not careful, not even one cluster may be fitted given the large dim of the raw statistics.
+      # .get_gof_stats() should handle that. Maybe its result should be used to update 'feasible'? (__F I X M E__)
       gofdens <- .do_call_wrap("mixmodCluster",list(data=gofStats, 
-                                                    nbCluster=nbCluster, 
+                                                    nbCluster=safe_nbCluster, 
                                                     models=.do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
                                                     seed=123, 
                                                     strategy=eval(Infusion.getOption("strategy"))))

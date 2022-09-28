@@ -3,6 +3,52 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.0.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item New function SLRT() for "summary-likelihood ratio tests", including bootstrap-corrected ones. For the latter correction, another function get_LRboot() provides a fast approximation to bootstrap distribution of likelihood ratio statistic. 
+\item Better choice of initial value of optimization operations in likelihood profile computations, giving more correct 1D profile plots and likelihood ratio tests (and possibly improving all subsequent operations in iterative workflows). 
+\item More thorough implementation of parallelization in add_simulation() (and add_reftable()), allowing forking, and control of random number generator.
+\item Finer control of parallelisation in refine(), through new features of the 'cluster_args' argument. 
+\item project() accepts (barely documented) "fastai" and "keras" methods, interfacing the packages of the same name (themselves interfacing python libraries).
+\item New default values of various controls in calls to ranger::ranger.  
+\item infer_SLik_joint() and goftest() will check for linear dependencies among the summary statistics (which would cause bugs in goftest()), thanks to the new convenience function check_raw_stats().
+\item MSL() now computes the hessian of summary likelihood at its maximum, to check parameter identifiability (with limited success). This hessian is included in the return value of MSL() and then in the 'MSL' environment stored in e.g.) objects of class 'SLik_j'. 
+\item New function focal_refine() to refine the likelihood surface for given parameter values.  
+\item The previously private function predict.SLik_j() that evaluates the likelihood for specific parameter points is now part of the API.
+\item New argument 'plot.slices' for plot.SLik_j() and plot.SLik().  
+\item New argument 'decorations' for plot1Dprof() and plot2Dprof().  
+\item Improved control of number of clusters in Gaussian mixture modelling to avoid fitting more parameters than data. 
+\item projections using 'ranger' now calls it with argument importance="permutation" which may be used to select raw statistics for the goodness of fit test.
+\item Check by add_reftable() of its result, to detect and more clearly warn about otherwise obscure problems that may occur at later steps.
+\item profile.SLik() gets an 'init' argument, though it's more for programming purposes than intended as a user-level feature. 
+\item New 'summLik' extractor. summLik() uses a fit object to evaluate the summary-likelihood function for distinct parameter values and even for new data.
+\item plot_proj(), a hastily written convenience function to plot a diagnostic plot for a projection from an SLik_j object.
+\item Several code fixes for more efficient handling of large reference tables (notably, resolving some memory issues when using "ranger" projection results).
+\item New functions get_nbCluster_range() (and seq_nbCluster(), less directly useful) to help in controlling the number of clusters used in Gaussian mixture modelling.
+\item get_from() gets new argument 'force' to force computation of elements that may be missing from the fit object.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Formals of add_reftable() modified (backward incompatibility if the former first argument 'simulations' was named in the function call).
+\item Infusion.getOption("nb_cores") now controls ranger::predict and ranger::ranger, with the expected effect according to the general effect of 'nb_cores' in Infusion (a single CPU is used if 'nb_cores' is NULL, while ranger functions use multithreading by default, i.e., when their 'num.threads' argument is NULL).  
+\item Backward-incompatible changes in project() arguments controlling training sizes.
+\item Backward-incompatible changes in global options controlling the number of clusters used in Gaussian mixture modelling.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Incorrect reference to randomForest in documentation for project().
+}
+}
+\subsection{DEPENDENCY CHANGES}{
+\itemize{
+\item 'caret' is back in suggested packages, but for its findLinearCombos() function rather than for any modelling method.
+\item 'ranger' is now an imported package.
+}
+}
+}
 \section{CHANGES UP TO VERSION 1.5.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

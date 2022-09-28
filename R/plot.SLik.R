@@ -29,6 +29,7 @@ plot.SLik <-function(x,y,filled=FALSE,
                      decorations=NULL, ## ADD to the default decorations
                      color.palette=NULL,
                      plot.axes=NULL, plot.title=NULL,
+                     plot.slices=TRUE,
                      ...) {
   object <- x
   fittedPars <- object$colTypes$fittedPars
@@ -57,11 +58,11 @@ plot.SLik <-function(x,y,filled=FALSE,
     }
     #plot(object$fit,which="predict")
   } else if (np==2L) {
-    if (inherits(object$fit,"HLfit")) {
+    if (inherits(object$fit,"HLfit")) { # note the alternative
       if (is.null(plot.title)) {
-        ## also a language expression 
+        ## also a language expression  (but, much later... note that in plot.SLik_j()  quote() without substitute() appears to work)
         plot.title <- substitute(title(main="Summary-likelihood-ratio surface",
-                               xlab=xlabv,ylab=ylabv),list(xlabv=fittedPars[1],ylabv=fittedPars[2]))
+                                       xlab=xlabv,ylab=ylabv),list(xlabv=fittedPars[1],ylabv=fittedPars[2]))
       }
       if (filled) {
         decos <- quote({if (!is.null(object$latestPoints)) points(object$logLs[object$latestPoints,fittedPars],pch=".",cex=2);
@@ -115,7 +116,7 @@ plot.SLik <-function(x,y,filled=FALSE,
               ...)
       }
     } 
-  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
+  } else if (plot.slices) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
   invisible(object)
 }
 

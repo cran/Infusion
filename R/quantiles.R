@@ -159,7 +159,7 @@ infer_surface.tailp <- function(object,
   }
   # 
   thisfit <- corrHLfit(form,data=object,family=binomial(),HLmethod=method,ranFix=allFix) ## full data smoothed with ranFix from cleaned data
-  .Object$rho <- thisfit$ranFix$rho # predict.Density uses this
+  .Object$rho <- thisfit$ranFix$rho # density computation uses this
   .Object$colTypes <- colTypes
   .Object$corr.args <- thisfit$ranFix[which(names(thisfit$ranFix) %in% c("nu","Nugget"))]
   .Object$lower <- lower

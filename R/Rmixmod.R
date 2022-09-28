@@ -22,17 +22,18 @@ setClass("dMixmod",
                  parameters="ANY")
 )
 
+# Approach assuming that the option is a list of arguments (which is currently not the case):
+.get_mixModstrategy <- function(strategy=Infusion.getOption("strategy"), seed=NULL) {
+  if (is.null(strategy$seed)) strategy$seed <- seed
+  # => "WARNING: Strategy@seed attribute is obsolete! Consider using mixmodCluster function's 'seed' parameter instead"
+  .do_call_wrap("mixmodStrategy",arglist=strategy,pack="Rmixmod")
+}
 
-# Alternative to (mixmodCluster+selection by AIC), returns a dMixmod object 
-.densityMixmod <- function(data,stat.obs,nbCluster=Infusion.getOption("nbCluster"), 
-                           models=.do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
-                           seed=123) {
-  # stat.obs useful for boundaries and to handle degenerate distributions:
-  nbCluster <- eval(nbCluster)
+# note the two possible return types:
+.process_boundaries <- function(data, stat.obs, boundaries) {
   varNames <- colnames(data) # may be modified below
   statNames <- names(stat.obs)  # colnames(data) was oK for the (2017) version of Infusion without modelling of joint distribs
   parameterNames <- setdiff(colnames(data),statNames)
-  boundaries <- attr(stat.obs,"boundaries") 
   Sobs_activeBoundaries <- simuls_activeBoundaries <- freq <- NULL
   if ( ! is.null(boundaries) ) {
     simulsMatches <- t(abs(apply(data[,names(boundaries),drop=FALSE],1L,`-`,y=boundaries))<1e-14)
@@ -48,17 +49,8 @@ setClass("dMixmod",
       activeNames <- names(Sobs_activeBoundaries)
       ## keep only simuls that match all the boundaries that stat.obs matches:
       goodrows <- which(apply(simulsMatches[,activeNames,drop=FALSE],1L,all))
-      varNames <- c(parameterNames,setdiff(statNames,activeNames))
-      if (length(goodrows)==0L) {
-        resu <- new("mixmodCluster",nbCluster=0L)
-        class(resu) <- structure("dMixmod", package="Infusion") 
-        resu@varNames <- varNames
-        resu@statNames <- statNames
-        resu@simuls_activeBoundaries <- simuls_activeBoundaries
-        resu@Sobs_activeBoundaries <- Sobs_activeBoundaries
-        resu@freq <- 1/(2*(nrow(data+1)))
-        return(resu)
-      } ## ELSE
+      # This 'goodrows' may have length zero => special handling in calling function
+      varNames <- c(parameterNames,setdiff(statNames,activeNames))  # modify previous varNames
       ## estimate proba that all (SobsMatches) are observed in the simulation 
       freq <- (length(goodrows)+1/2)/(nrow(data)+1) ## log(freq) is estimator of log(p) with bias ~1/n^2 
       # and select data to perform mixture modelling on remaining statistics (for (2017) method)
@@ -76,92 +68,117 @@ setClass("dMixmod",
       # For SLik_j, given stat.obs not at boundaries, we thus shoult compute joint as 
       #  freq * joint density(all param and stats| simul not at boundary)
     }
-  } 
+  }
+  resu <- list(data=data, freq=freq, simuls_activeBoundaries=simuls_activeBoundaries, statNames=statNames,
+               Sobs_activeBoundaries=Sobs_activeBoundaries, varNames=varNames) # alternatively, a mixmodCluster object has been returned
+} 
+
+# Alternative to (mixmodCluster+selection by AIC), returns a dMixmod object 
+.densityMixmod <- function(data,stat.obs,nbCluster=seq_nbCluster(nr=nrow(data)), 
+                           models=.do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
+                           seed=Infusion.getOption("mixmodSeed")) {
+  # stat.obs useful for boundaries and to handle degenerate distributions:
+  nbCluster <- get_nbCluster_range(projdata=data, nbCluster=nbCluster)
   ## 
-  checkranges <- apply(data,2,range)
-  rangewidths <- checkranges[2L,]-checkranges[1L,]
-  degenerates <- rangewidths<1e-6
-  if (any(degenerates)) {
-    which_dg <- which(degenerates)
-    which_out <- (stat.obs[which_dg]>checkranges[2L,which_dg]) | (stat.obs[which_dg]<checkranges[1L,which_dg])
-    if (any(which_out)) {
-      for (dg in which_dg) {
-        dst <- max(abs(stat.obs[dg]-data[,dg]))
-        data[,dg] <- data[,dg] + rnorm(n=nrow(data),sd=dst/5) ## makes it reasonably unlikely that obs will be within noised data
+  blob <- .process_boundaries(data, stat.obs, boundaries=attr(stat.obs,"boundaries"))
+  if ( ! nrow(blob$data)) { # ie if length(blob$goodrows)==0L in .process_boundaries()
+    ## code has long been invalid, but not tested, here:
+    # resu <- new("mixmodCluster",nbCluster=0L) # just does not exist ('m'ixmodCluster is the fn, not the class); better syntax:
+    ## new(structure("MixmodCluster",package="Rmixmod"),nbCluster=0L) # class is OK but data argument missing, nbCluster=0 never works anayway
+    ## next line was 
+    # class(resu) <- structure("dMixmod", package="Infusion")
+    ## so let's try
+    resu <- new(structure("dMixmod", package="Infusion")) # line individually OK; no 'data' nor 'nbCluster' slots
+  } else {
+    # data lines matching the 'boundaries' values have now been removed. There may still be NA's in the data (notably, lines of NA's). The doc explains
+    # "the inference method ... must thus ignore all empirical distributions including NA/NaN/inf.": 
+    data <- .check_data_post_boundaries(blob$data)
+    ## 
+    checkranges <- apply(data,2,range)
+    rangewidths <- checkranges[2L,]-checkranges[1L,]
+    degenerates <- rangewidths<1e-6
+    if (any(degenerates)) {
+      which_dg <- which(degenerates)
+      which_out <- (stat.obs[which_dg]>checkranges[2L,which_dg]) | (stat.obs[which_dg]<checkranges[1L,which_dg])
+      if (any(which_out)) {
+        for (dg in which_dg) {
+          dst <- max(abs(stat.obs[dg]-data[,dg]))
+          data[,dg] <- data[,dg] + rnorm(n=nrow(data),sd=dst/5) ## makes it reasonably unlikely that obs will be within noised data
+        }
+      } else  {
+        ## stat.obs in degenerate simuls but mixmodCluster needs non-degenerate distribution 
+        for (dg in which_dg) data[,dg] <- data[,dg] + rnorm(n=nrow(data),sd=1e-06)
       }
-    } else  {
-      ## stat.obs in degenerate simuls but mixmodCluster needs non-degenerate distribution 
-      for (dg in which_dg) data[,dg] <- data[,dg] + rnorm(n=nrow(data),sd=1e-06)
     }
-  }
-  if ((nc <- ncol(data))>(nr <- nrow(data))) {
-    stop(paste0("Clustering expected to fail on data with more columns (",nc,
-                " retained parameters and/or statistics)) than rows (",nr," retained points)."))
-  }
-  #  x <- mixmodCluster(as.data.frame(data),seq(2*log(nrow(data))),strategy = mixmodStrategy(seed=123))
-  # statdoc of mixmod recommends ceiling(nrow(data)^0.3) and refers to Bozdogan93
-  # But...... it seems to underfit, hence use larger nbCluster range
-  clu_optimizer <- Infusion.getOption("clu_optimizer")
-  if (clu_optimizer==".minImIze") {
-    resu <- try(.minImIze(init=NULL, objfn=.IC_wrapper, range=nbCluster, trace=FALSE, data=data, models=models, 
-                          seed=123)$cluObject@bestResult,silent=TRUE) # F I X M E ? $cluObject@bestResult loses info about $cluObject@strategy
-  } else if (clu_optimizer==".minimize_from_upper") {
-    resu <- try(.minimize_from_upper(objfn=.IC_wrapper, range=nbCluster, trace=FALSE, data=data, models=models, 
-                                     seed=123)$cluObject@bestResult,silent=TRUE) # F I X M E ? $cluObject@bestResult loses info about $cluObject@strategy
-  } else { ## default !
-    resu <- try(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, seed=seed, 
-                                                        strategy=eval(Infusion.getOption("strategy")))),
-                     silent = TRUE)
-  }
-  if (inherits(resu,"try-error")) {
-    x <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, 
-                                                             seed=123) ))
-    if (length(nbCluster)==1L) {
-      if (x@error) {
-        if (FALSE) {
-          message(paste("mixmodCluster() failed for nbCluster=",
-                        paste(nbCluster,collapse=" ")))
-          message("Trying decreasing nbCluster...")
-        }
-        for (nb in rev(seq_len(min(nbCluster)-1L))) {
-          x <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nb, models=models, 
-                                                                   seed=seed) ))
-          if ( ! x@error ) break
-        }
+    if ((nc <- ncol(data))>(nr <- nrow(data))) {
+      stop(paste0("Clustering expected to fail on data with more columns (",nc,
+                  " retained parameters and/or statistics)) than rows (",nr," retained points)."))
+    }
+    #  x <- mixmodCluster(as.data.frame(data),seq(2*log(nrow(data))),strategy = mixmodStrategy(seed=123))
+    # statdoc of mixmod recommends ceiling(nrow(data)^0.3) and refers to Bozdogan93
+    # But...... it seems to underfit, hence use larger nbCluster range
+    clu_optimizer <- Infusion.getOption("clu_optimizer")
+    if (clu_optimizer==".minImIze") {
+      resu <- try(.minImIze(init=NULL, objfn=.IC_wrapper, range=nbCluster, trace=FALSE, data=data, models=models, 
+                            seed=123)$cluObject@bestResult,silent=TRUE) # F I X M E ? $cluObject@bestResult loses info about $cluObject@strategy
+    } else if (clu_optimizer==".minimize_from_upper") {
+      resu <- try(.minimize_from_upper(objfn=.IC_wrapper, range=nbCluster, trace=FALSE, data=data, models=models, 
+                                       seed=123)$cluObject@bestResult,silent=TRUE) # F I X M E ? $cluObject@bestResult loses info about $cluObject@strategy
+    } else { ## default !
+      resu <- try(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, seed=seed, 
+                                                     strategy=eval(Infusion.getOption("strategy")))),
+                  silent = TRUE)
+    }
+    if (inherits(resu,"try-error")) {
+      x <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nbCluster, models=models, 
+                                                               seed=123) ))
+      if (length(nbCluster)==1L) {
+        if (x@error) {
+          if (FALSE) {
+            message(paste("mixmodCluster() failed for nbCluster=",
+                          paste(nbCluster,collapse=" ")))
+            message("Trying decreasing nbCluster...")
+          }
+          for (nb in rev(seq_len(min(nbCluster)-1L))) {
+            x <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=as.data.frame(data), nbCluster=nb, models=models, 
+                                                                     seed=seed) ))
+            if ( ! x@error ) break
+          }
+        } 
+        resu <- x@bestResult # MixmodResults
       } 
-      resu <- x@bestResult # MixmodResults
     } 
-  } 
-  # if (inherits(resu,"try-error")) {
-  #   dump.frames("C:/home/francois/travail/stats/InferentialSimulation/Infusion/devtoolsdump",to.file = TRUE)
-  # } else 
-  if ( inherits(resu,"MixmodCluster")) resu <- .get_best_mixmod_by_IC(resu) # MixmodResults
-  if (resu@model=="Gaussian_pk_Lk_C") { 
-    ## then cov matrices are proportional, wecheck they are not too heterogeneous
-    varmats <- resu@parameters@variance
-    vars11 <- unlist(lapply(varmats,`[`,x=1L,y=1L))
-    rangelv <- range(log(vars11))
-    if ( rangelv[2L]-rangelv[1L]> 30) {
-      message("Inferred Gaussian components have very heterogeneous variances.")
-      message("This can occur when some summary statistic takes one particular value with high probability,")
-      message("which will be poorly fitted by mixmodCluster().")
-      warning("Result of densityMixmod with model \"Gaussian_pk_Lk_C\" is suspect.\n See screen messages for further information")
-    } 
-  } else if (resu@model=="Gaussian_pk_Lk_Ck"){
-    if (resu@error=="determinant of matrix too small" ) {
-      message("Inferred Gaussian components have too small determinant.")
-      message("This can occur when some summary statistic takes one particular value with high probability,")
-      message("which will be poorly fitted by mixmodCluster().")
-      warning("Result of densityMixmod with model \"Gaussian_pk_Lk_Ck\" is suspect.\n See screen messages for further information.")
+    # if (inherits(resu,"try-error")) {
+    #   dump.frames("C:/home/francois/travail/stats/InferentialSimulation/Infusion/devtoolsdump",to.file = TRUE)
+    # } else 
+    if ( inherits(resu,"MixmodCluster")) resu <- .get_best_mixmod_by_IC(resu) # MixmodResults
+    if (resu@model=="Gaussian_pk_Lk_C") { 
+      ## then cov matrices are proportional, wecheck they are not too heterogeneous
+      varmats <- resu@parameters@variance
+      vars11 <- unlist(lapply(varmats,`[`,x=1L,y=1L))
+      rangelv <- range(log(vars11))
+      if ( rangelv[2L]-rangelv[1L]> 30) {
+        message("Inferred Gaussian components have very heterogeneous variances.")
+        message("This can occur when some summary statistic takes one particular value with high probability,")
+        message("which will be poorly fitted by mixmodCluster().")
+        warning("Result of densityMixmod with model \"Gaussian_pk_Lk_C\" is suspect.\n See screen messages for further information")
+      } 
+    } else if (resu@model=="Gaussian_pk_Lk_Ck"){
+      if (resu@error=="determinant of matrix too small" ) {
+        message("Inferred Gaussian components have too small determinant.")
+        message("This can occur when some summary statistic takes one particular value with high probability,")
+        message("which will be poorly fitted by mixmodCluster().")
+        warning("Result of densityMixmod with model \"Gaussian_pk_Lk_Ck\" is suspect.\n See screen messages for further information.")
+      }
     }
-  }
-  class(resu) <- structure("dMixmod", package="Infusion") 
-  resu@varNames <- varNames
-  resu@statNames <- statNames
-  resu@simuls_activeBoundaries <- simuls_activeBoundaries
-  resu@Sobs_activeBoundaries <- Sobs_activeBoundaries
-  resu@freq <- freq
-  return(resu)
+    class(resu) <- structure("dMixmod", package="Infusion") 
+  } 
+  resu@varNames <- blob$varNames
+  resu@statNames <- blob$statNames
+  resu@simuls_activeBoundaries <- blob$simuls_activeBoundaries
+  resu@Sobs_activeBoundaries <- blob$Sobs_activeBoundaries
+  resu@freq <- blob$freq
+  resu
 }
 
 
@@ -183,10 +200,15 @@ predict.dMixmod <- function(object,
           colnames(newdata) <- varNames
         } else colnames(newdata) <- datanames
       }
-    } 
-    if ( !is.null(Sobs_activeBoundaries <- object@Sobs_activeBoundaries)) {
+    } else if (inherits(newdata,"data.frame")) {
+      newdata <- matrix(unlist(newdata,recursive = FALSE, use.names = FALSE), nrow=nrow(newdata),
+                        dimnames=list(NULL,colnames(newdata)) ) # newdata <- as.matrix(newdata)
+    }
+    if ( !is.null(Sobs_activeBoundaries <- object@Sobs_activeBoundaries)) { # if the Sobs matches some boundaries, identified in Sobs_activeBoundaries
+      # then looks whether the newdata match all of the boundaries met by Sobs
       boundsdata <-  newdata[,names(Sobs_activeBoundaries),drop=FALSE]
       atb <- apply(boundsdata,1L,`==`,y=Sobs_activeBoundaries)
+      # If not (i.e. only partial matching) the object does not predict correctly the density => warning + heuristic patch:
       if (!all(atb)) {warning("'predict.dMixmod' cannot compute joint out-of-boundary density from conditional at-boundary density. ")}
       freq <- object@freq
       freqs <- atb*freq+(1-atb)*(1-freq) ## uses 1-freq instead of the unknown density of the variable(s) in boundaries 
@@ -212,16 +234,19 @@ predict.dMixmod <- function(object,
   nbCluster <- object@nbCluster
   if (log) { 
     if (nbCluster>0L) {
-      density <- matrix(nrow=nrow(densitydata),ncol=nbCluster)
+      nr <- nrow(densitydata)
+      density <- matrix(nrow=nr,ncol=nbCluster)
       for (k in 1:nbCluster) {
         density[,k] <- log(object@parameters["proportions", k]) + 
           .fast_dmvnorm(densitydata, object@parameters["mean", k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
       }
-      maxlogs <- apply(density,1,max)
-      normalizedlogs <- apply(density,2L,`-`,maxlogs) ## highest value per row is 0
+      maxlogs <- numeric(nr)
+      for (it in seq_len(nr)) maxlogs[it] <- max(density[it,]) # maxlogs <- apply(density,1,max)
+      normalizedlogs <- density
+      for (jt in seq_len(nbCluster)) normalizedlogs[,jt] <- normalizedlogs[,jt] - maxlogs # normalizedlogs <- apply(density,2L,`-`,maxlogs) ## highest value per row is 0
       ## apply return mess again: 
       if (is.vector(normalizedlogs))  dim(normalizedlogs) <- c(1L, length(normalizedlogs))
-      mixture <- rowSums(exp(normalizedlogs)) ## exp(normalizedlogs) in (0,1); sum(exp(logLi-maxlog))= exp(-maxlog) sum(exp(logLi))= exp(-maxlog) sum(Li)
+      mixture <- .rowSums(exp(normalizedlogs),m=nrow(normalizedlogs), n=ncol(normalizedlogs)) ## exp(normalizedlogs) in (0,1); sum(exp(logLi-maxlog))= exp(-maxlog) sum(exp(logLi))= exp(-maxlog) sum(Li)
       mixture <- log(mixture) + maxlogs ## log(sum(Li))
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture + atb*log(freqs)
     } else mixture <- atb*log(freqs)
@@ -232,12 +257,13 @@ predict.dMixmod <- function(object,
         density[,k] <- object@parameters["proportions", k] * 
           .fast_dmvnorm(densitydata, object@parameters["mean", k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
       }
-      mixture <- rowSums(density) ## sum(Li) 
+      mixture <- .rowSums(density,m=nrow(density), n=ncol(density)) ## sum(Li) 
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture*freqs
     } else mixture <- freqs
   }
   return(mixture)
 }
+
 
 plot.dMixmod <- function(x, data=NULL, ...) {
   if (requireNamespace("Rmixmod")) {
@@ -278,7 +304,7 @@ plot.dMixmod <- function(x, data=NULL, ...) {
   return(simuls)
 }
 
-.do_call_wrap <- function(chr_fnname,arglist, pack="Rmixmod") { # could be sought has .wrap_do_call
+.do_call_wrap <- function(chr_fnname,arglist, pack="Rmixmod") { # could be sought as .wrap_do_call
   #eval(as.call(c(quote(require),list(package="Rmixmod", quietly = TRUE))))
   if (length(grep(pack,packageDescription("Infusion")$Imports))) {
     ## then the necessary functions must be imported-from in the NAMESPACE  
@@ -297,3 +323,4 @@ plot.dMixmod <- function(x, data=NULL, ...) {
     } else {stop(paste("'",pack,"' required but not available.",sep=""))}
   }
 }
+

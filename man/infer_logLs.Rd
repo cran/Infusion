@@ -68,7 +68,7 @@ See Details for the required value of the \code{method}s called by \code{infer_l
 }
 \details{
 By default, density estimation is based on \code{Rmixmod} methods. Other available methods are not routinely used and not all of \code{Infusion} features may work with them. The function \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
-is called, with arguments \code{nbCluster=Infusion.getOption("nbCluster")} and \code{mixmodGaussianModel=Infusion.getOption("mixmodGaussianModel")}. If \code{Infusion.getOption("nbCluster")} specifies a sequence of values, then several clusterings are computed and AIC is used to select among them.  
+is called, with arguments \code{nbCluster=seq_nbCluster(nr=nrow(data))} and \code{mixmodGaussianModel=Infusion.getOption("mixmodGaussianModel")}. If \code{Infusion.getOption("seq_nbCluster")} specifies a sequence of values, then several clusterings are computed and AIC is used to select among them.  
 
 \code{infer_logL_by_GLMM}, \code{infer_logL_by_Rmixmod}, \code{infer_logL_by_mclust}, and \code{infer_logL_by_Hlscv.diag} are examples of the method that may be provided for density estimation. Other \code{method}s may be provided with the same arguments. Their return value must include the element \code{logL}, an estimate of the log-density of \code{stat.obs}, and the element \code{isValid} with values \code{FALSE}/\code{TRUE} (or 0/1). The standard format for the return value is \code{unlist(c(attr(EDF,"par"),logL,isValid=isValid))}.
 
@@ -80,7 +80,7 @@ The source code of \code{infer_logL_by_Hlscv.diag} illustrates how to test wheth
 
 \code{infer_logL_by_Rmixmod} calls \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
 \code{infer_logL_by_mclust} calls \code{mclust::densityMclust}, 
-\code{infer_logL_by_Hlscv.diag} calls \code{ks::kde}, and \code{infer_logL_by_GLMM} fits a binned distribution of summary statistics using a Poisson GLMM with autocorrelated random effects, where the binning is based on a tesselation of a volume containing the whole simulated distribution. Limited experimentations so far suggest that the mixture models methods are fast and appropriate (\code{Rmixmod}, being a bit faster, is the default method); that the kernel smoothing method is more erratic and moreover requires additional input from the user, hence is not really applicable, for distributions in dimension \emph{d}= 4 or above; and that the GLMM method is a very good density estimator for \emph{d}=2 but will challenge one's patience for \emph{d}=3 and further challenge the computer's memory for \emph{d}=4.
+\code{infer_logL_by_Hlscv.diag} calls \code{ks::kde}, and \code{infer_logL_by_GLMM} fits a binned distribution of summary statistics using a Poisson GLMM with autocorrelated random effects, where the binning is based on a tesselation of a volume containing the whole simulated distribution. Limited experiments so far suggest that the mixture models methods are fast and appropriate (\code{Rmixmod}, being a bit faster, is the default method); that the kernel smoothing method is more erratic and moreover requires additional input from the user, hence is not really applicable, for distributions in dimension \emph{d}= 4 or above; and that the GLMM method is a very good density estimator for \emph{d}=2 but will challenge one's patience for \emph{d}=3 and further challenge the computer's memory for \emph{d}=4.
 }
 \seealso{
  See step (3) of the workflow in the Example on the main \code{\link{Infusion}} documentation page.  

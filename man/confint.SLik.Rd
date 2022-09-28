@@ -23,7 +23,7 @@
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{
-an \code{SLik} or \code{SLikp} object
+an \code{SLik} or \code{SLik_j} object
 }
   \item{parm}{
   The parameter which confidence bounds are to be computed

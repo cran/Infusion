@@ -9,8 +9,75 @@ confint.SLik <- function(object, parm, ## parm is the parameter which CI is soug
              verbose=verbose,fixed=fixed,which=which,...)
 }
 
-# generic: profile(fitted,...)
-profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
+# experimental; proved insuficient
+.newdata_from_pardens_clu_means <- function(object, given) {
+  if (inherits(object$jointdens,"Mclust")) { # code not tested (_F I X M E_)
+    conddens <- .conditional_mclust(object$pardens,fittedPars=object$colTypes$fittedPars ,given=given, expansion=1)
+    means <- conddens$parameters$mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
+  } else {
+    conddens <- .conditional_Rmixmod(object$pardens, given=given, expansion=1) 
+    solve_t_chol_sigma_list <- lapply(conddens@parameters["variance"], .solve_t_cholfn)
+    means <- conddens@parameters@mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
+  }
+  fittedPars <- object$colTypes$fittedPars
+  newdata <- matrix(NA,nrow = 1L, ncol=length(fittedPars), dimnames=list(NULL,fittedPars))
+  newdata <- newdata[rep(1,nrow(means)),, drop=FALSE]
+  newdata[,colnames(means)] <- means
+  newdata[,names(given)] <- given
+  newdata
+}
+
+.init_params_from_pardens <- function(object, 
+                                      given, # always conditional to some values
+                                      profiledNames, # in the default method (max_conddens=FALSE) this only serves to select the returned parameters
+                                      plower, pupper,
+                                      newobs=NULL) {
+  if (inherits(object$jointdens,"Mclust")) { # code not tested (_F I X M E_)
+    condpardens <- .conditional_mclust(object$pardens,fittedPars=object$colTypes$fittedPars ,given=given, expansion=1)
+    means <- condpardens$parameters$mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
+  } else {
+    condpardens <- .conditional_Rmixmod(object$pardens, given=given, expansion=1) 
+    solve_t_chol_sigma_list <- lapply(condpardens@parameters["variance"], .solve_t_cholfn)
+    means <- condpardens@parameters@mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
+  }
+  fittedPars <- object$colTypes$fittedPars
+  DGPparms <- matrix(NA,nrow = 1L, ncol=length(fittedPars), dimnames=list(NULL,fittedPars))
+  DGPparms <- DGPparms[rep(1,nrow(means)),, drop=FALSE]
+  DGPparms[,colnames(means)] <- means
+  DGPparms[,names(given)] <- given
+  if (is.null(newobs)) {
+    best_clu <- which.max(predict(object, newdata=DGPparms, which="safe"))
+  } else best_clu <- which.max(summLik(object, parm=DGPparms, data=newobs, which="safe"))
+  resu <- DGPparms[best_clu,profiledNames]
+  resu
+}
+
+.safe_init <- function(object, given=NULL, plower, pupper, newobs=NULL, 
+                       inits=NULL, # to add to locally generated ones
+                       profiledNames=names(plower)) { # currently, either 'given' or 'data' must be provided (__F I X M E__ allow neither ? = init global optimization in MSL)
+  logLs <- object$logLs
+  #prev_n_iter <- max(logLs$cumul_iter)
+  #inits <- logLs[logLs$cumul_iter==prev_n_iter,object$colTypes$fittedPars] # useless if we built a large synthetic reference table from many small ones
+  inits <- rbind(inits, logLs[,object$colTypes$fittedPars], object$MSL$MSLE)
+  inits[,names(given)] <- given
+  if (is.null(newobs)) {
+    inits_pred <- predict(object,inits, which="safe")
+    if ( ! is.null(given)) {
+      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper)
+      if (max(inits_pred) > predict(object,c(init[profiledNames],given), which="safe")) init <- unlist(inits[which.max(inits_pred),])
+    } else init <- unlist(inits[which.max(inits_pred),])
+  } else {
+    inits_pred <- summLik(object,inits, data=newobs, which="safe")
+    if ( ! is.null(given)) {
+      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper, newobs=newobs)
+      if (max(inits_pred) > summLik(object,c(init[profiledNames],given), data=newobs, which="safe")) init <- unlist(inits[which.max(inits_pred),])
+    } else init <- unlist(inits[which.max(inits_pred),])
+  }
+  init[profiledNames] # ordered as plower
+}
+
+# generic: profile(fitted,...), returns a # *log*L
+profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, init="default", which="safe", ...) {
   fixedPars <- names(fixed)   
   fittedPars <- fitted$colTypes$fittedPars
   if (! is.null(fixed)) fittedPars <- setdiff(fittedPars,fixedPars)
@@ -26,7 +93,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
   if (fittedparamnbr == 1L) {
     v[parm] <- value
     if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-    resu <- predict(fitted,newdata=v, which="lik")
+    resu <- predict(fitted,newdata=v, which=which)
   } else { 
     profiledNames <- names(fitted$lower)
     profiledNames <- setdiff(profiledNames, c(parm,fixedPars)) # [which( ! (profiledNames %in% parm))] 
@@ -36,23 +103,41 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
     plogL <- function(pparv) {
       v[profiledNames] <- pparv
       if (! is.null(fixed)) v[fixedPars] <- fixed[fixedPars]
-      return(( - predict(fitted,newdata=v, which="lik"))) ## removed log...   
+      return(( - predict(fitted,newdata=v, which=which))) ## removed log... (log=TRUE is the default)  
     }
-    optr <- .safe_opt(fitted$MSL$MSLE[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE)
+    if (identical(init,"clu_means")) { # multiple optims, one from each clu mean
+      newdata <- .newdata_from_pardens_clu_means(fitted,value)
+      OPT <- function(init) {.safe_opt(init[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE, ...)}
+      optrS <- apply(newdata,1L, OPT)  
+      optr <- optrS[[which.min(sapply(optrS,`[[`, i="objective"))]]
+    } else { # single optim from best clu mean by logLik 
+      if (identical(init,"default")) {
+        if (inherits(fitted,"SLik_j")) { 
+          init <- .safe_init(object = fitted, given=value, plower, pupper)
+        } else init <- fitted$MSL$MSLE  
+      } # else init must be user-provided vector including profiled pars 
+      optr <- .safe_opt(init[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE, ...)
+    }
     if(return.optim) {
       optr$value <- - optr$objective 
       optr$par <- optr$solution
       return(optr)
     } else return(- optr$objective) 
   }
-}
+} # *log*L
 
 
 .confintAll <- function(object, parm, ## parm is the parameter which CI is sought
                        givenmax=NULL,
-                       level, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
+                       #Bartlett=0L,
+                       level, # value of 2 LR  
+                       verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
   if (is.null(givenmax)) stop("The point estimates should be computed before using 'confint'.")
   fixedPars <- names(fixed)   
+  if ( ! is.null(bootreps <- object$bootLRTenv$bootreps_list[[sort(parm)]])) {
+    meanLR <- mean(bootreps)
+    level <- level *meanLR / length(parm)  # correcting the threshold: inverse of correcting the LR stat
+  }
   fittedPars <- object$colTypes$fittedPars
   if (! is.null(fixed)) fittedPars <- setdiff(fittedPars,fixedPars)
   fittedparamnbr <- length(fittedPars) 
@@ -103,8 +188,12 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
   CIlo <- NA
   CIup <- NA
   fupper <- -level
-  if (abs(lowval - MLval) < abs(MLval * 1e-08) || !which[1]) {
+  if (ML_at_bound <- (abs(lowval - MLval) < abs(MLval * 1e-08)) || !which[1]) {
     CIlo <- NA
+    if (ML_at_bound && verbose) {
+      mess <- paste0("Lower CI bound for ",parm," cannot be computed because point estimate is at lower bound of 'fitted' parameter range.")
+      print(mess,quote=FALSE)
+    }
   } else {
     flower <- objectivefn(lowval)
     if (is.na(flower)) {
@@ -119,7 +208,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
         print(mess,quote=FALSE)
       }
     }
-    if (class(CIlo) == "try-error") {
+    if (inherits(CIlo,"try-error")) {
       CIlo <- NA
       errmsg <- paste("Lower CI bound for ", parm, " could not be computed (maybe out of sampled range)", 
                       sep = "")
@@ -139,8 +228,12 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
   }
   ###
   flower <- fupper
-  if (abs(hival - MLval) < abs(MLval * 1e-08) || !which[2]) {
+  if ( ML_at_bound <- (abs(hival - MLval) < abs(MLval * 1e-08)) || !which[2]) {
     CIup <- NA
+    if (ML_at_bound && verbose) {
+      mess <- paste0("Upper CI bound for ",parm," cannot be computed because point estimate is at upper bound of 'fitted' parameter range.")
+      print(mess,quote=FALSE)
+    }
   } else {
     fupper <- objectivefn(hival)
     if (is.na(fupper)) {
@@ -155,7 +248,7 @@ profile.SLik <- function(fitted, value, fixed=NULL, return.optim=FALSE, ...) {
         print(mess,quote=FALSE)
       }
     }
-    if (class(CIup) == "try-error") {
+    if (inherits(CIup,"try-error")) {
       CIup <- NA
       errmsg <- paste("Upper CI bound for ", parm, " could not be computed (maybe out of sampled range)", 
                       sep = "")

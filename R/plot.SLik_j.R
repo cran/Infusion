@@ -1,4 +1,4 @@
-.filled.contour.plot <- function(object,xyvars,color.palette=NULL,grid_args=list()) {
+.filled.contour.plot <- function(object, xyvars, color.palette=NULL, grid_args=list(), plot.title) {
   grillelist <- list()
   grid_args$values <- object$logLs[,xyvars[1L]]
   grillelist[[xyvars[1L]]] <- do.call(".gridfn",grid_args) 
@@ -33,13 +33,15 @@
   }
   spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main="Summary-likelihood-ratio surface",
                        color.palette= color.palette,nlevels=50,
-                       plot.axes=eval(plot.axes)
+                       plot.axes=eval(plot.axes),
+                       plot.title=plot.title
   )
 }
 
 plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                        color.palette = NULL, plot.axes = NULL, 
-                       plot.title = NULL, from_refine=FALSE, ...) {
+                       plot.title = NULL, from_refine=FALSE, 
+                       plot.slices=TRUE, ...) {
   object <- x
   fittedPars <- object$colTypes$fittedPars
   maxlogL <- object$MSL$maxlogL
@@ -64,8 +66,10 @@ plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
       points(object$CIobject$bounds,y=yci,pch="+")
     }
   } else if (np==2L) {
+    if (is.null(plot.title)) plot.title=quote(title(main="Summary-likelihood-ratio surface",
+                                              xlab=fittedPars[1],ylab=fittedPars[2]))
     if (filled) {
-      .filled.contour.plot(object,xyvars=fittedPars,color.palette=NULL)
+      .filled.contour.plot(object, xyvars=fittedPars, color.palette=NULL, plot.title = eval(plot.title))
     } else {
       decos <- quote({
         if (!is.null(object$latestPoints)) {points(object$logLs[object$latestPoints,fittedPars],pch=".",cex=2)};
@@ -78,12 +82,11 @@ plot.SLik_j <- function(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL,
       if (maxprofz>maxlogL) object$MSL$init_from_prof <- maxlogL <- maxprofz
       spaMMplot2D(x=xy[,1],y=xy[,2],z=exp(profz-maxlogL),
                   color.palette=function(n){spaMM.colors(50,redshift=3)},nlevels=50,
-                  plot.title=title(main="Summary-likelihood-ratio surface",
-                                         xlab=fittedPars[1],ylab=fittedPars[2]),
+                  plot.title=eval(plot.title),
                   decorations=decos,
                   ...)
     }
-  } else if (np>2L) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
+  } else if (plot.slices) {.calc_all_slices(object,fittedPars,color.palette,plot.axes=plot.axes)}
   if ( (! is.null(object$MSL$init_from_prof)) && (! from_refine) ) .MSL_update(object)
   invisible(object)
 }

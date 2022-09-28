@@ -11,14 +11,16 @@ These functions plot 1D and 2D profiles from an SLik object
 plot1Dprof(object, pars=object$colTypes$fittedPars, type="logLR",   
            gridSteps=21, xlabs=list(), ylab, scales=NULL,
            plotpar=list(pch=20), 
-           control=list(min=-7.568353, shadow_col="grey70"))
+           control=list(min=-7.568353, shadow_col="grey70"),
+           decorations = function(par) NULL, ...)
 plot2Dprof(object, pars=object$colTypes$fittedPars, type="logLR",  
            gridSteps=17, xylabs=list(), main, scales=NULL,
-           plotpar=list(pch=20), margefrac = 0)
+           plotpar=list(pch=20), margefrac = 0,
+           decorations = function(par1,par2) NULL, ... )
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{object}{ An SLik object }
+  \item{object}{An \code{SLik} or \code{SLik_j} object}
   \item{pars}{ The parameters for which profiles will be computed. For 2D plots, all pairs of parameters in \code{pars} are considered }
   \item{type}{Character: \code{"logL"} to plot the log-likelihood profile; \code{"logLR"} (or \code{"LR"} for the not-log version) to plot the log-likelihood-ratio profile (the default); or \code{"zoom"} or \code{"dual"} for variants of \code{"logLR"} (see details). }
   \item{gridSteps}{ The number of values (in each dimension for 2D plots) which likelihood  should be computed. For 1D plots, 
@@ -33,7 +35,9 @@ plot2Dprof(object, pars=object$colTypes$fittedPars, type="logLR",
   }
   \item{plotpar}{ arguments for \code{par()} such as font sizes, etc.}
   \item{control}{Control of \code{"zoom"} or \code{"dual"} plots (see Details).}
+  \item{decorations}{ A function with formals parameters as shown by the default (being parameters names represented as character strings), implementing graphic directives added to the plot.}
   \item{margefrac}{ For development purposes, not documented.}
+  \item{\dots}{ Further arguments passed by another function. Currently these arguments are ignored.}
 }
 \details{
 A \code{"zoom"} plot shows only the top part of the profile, defined as points whose y-values are above a threshold minus-log-likelihood ratio \code{control$min}, whose default is -7.568353, the 0.9999 p-value threshold.

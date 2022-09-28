@@ -21,7 +21,7 @@ citEntry(entry="Article",
 
          pages        = "110-119",
          
-         #url          = "http://dx.doi.org/10.1111/1755-0998.12627",
+         #url          = "https://dx.doi.org/10.1111/1755-0998.12627",
          
          
          textVersion = paste("Rousset F., Gouy A., Martinez Almoyna C., Courtiol A. (2017)",
@@ -30,5 +30,5 @@ citEntry(entry="Article",
                              
                              "Molecular Ecology Resources 17: 110-119", # place for "journal vol pages" 
                              
-                             "http://dx.doi.org/10.1111/1755-0998.12627") # place for "URL ..." 
+                             "https://dx.doi.org/10.1111/1755-0998.12627") # place for "URL ..." 
 )

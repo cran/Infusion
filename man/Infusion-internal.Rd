@@ -1,5 +1,7 @@
 \name{Infusion-internal}
 
+\alias{projpath} % for local tests
+
 \alias{calc.lrthreshold} % generic
 \alias{calc.lrthreshold.default} % S3 methods
 \alias{calc.lrthreshold.SLik}
@@ -7,7 +9,6 @@
 \alias{predict.dMixmod}
 \alias{predict.dMclust}
 \alias{predict.SLik}
-\alias{predict.SLik_j}
 \alias{predict.MixmodResults}
 \alias{predict.SLikp}
 \alias{plot.MixmodResults}

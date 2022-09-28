@@ -18,8 +18,9 @@
     object$par_RMSEs$warn <-  paste("Intervals and RMSEs for parameters discarded as a new likelihood maximum was found by a profile-plot function.\n",
                                     "Re-run MSL() to regenerate this information.")
   }
-  newmax <- MSL(object, eval_RMSEs=FALSE, CIs=FALSE)
+  newmax <- MSL(object, eval_RMSEs=FALSE, CIs=FALSE) # with a NEW $MSL environment 
   for (st in ls(newmax$MSL)) object$MSL[[st]] <- newmax$MSL[[st]] ## but keeping the environment (~pointer) unchanged.
+  # so the object$init_from_prof remains
 } # only environmentswhere updated, so no return value
 
 
@@ -32,7 +33,9 @@ plot1Dprof <- function(object, ## SLik object
                        ylab, ## y-axis name; default deduced from type
                        scales=NULL,
                        plotpar=list(pch=20), ## graphic parameters, a list of valid arguments for par() 
-                       control=list(min=-7.568353, shadow_col="grey70")
+                       control=list(min=-7.568353, shadow_col="grey70"),
+                       decorations = function(par) NULL, # function(par) abline(v=expectation[par],col="red")
+                       ...
 ) {
   lower <- object$lower
   upper <- object$upper
@@ -68,23 +71,29 @@ plot1Dprof <- function(object, ## SLik object
   } else {
     intsqrt <- floor(sqrt(np))
     if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}
-    opar <- par(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis, plotpar, no.readonly = TRUE)
+    par_arglist <- c(list(mfrow=c(ceiling(np/intsqrt), intsqrt),cex.axis=loccex.axis), plotpar)
+    opar <- par(par_arglist, no.readonly = TRUE)
   }
   ##
   for (st in pars) {
     if (interactive()) {cat(paste("Computing profile for", st, "\n"))}
     prevmsglength <- 0L
     profiledOutPars <- setdiff(object$colTypes$fittedPars,st)
-    profil <- function(z) {
+    objfn <- function(v, template) {
+      template[profiledOutPars] <- v 
+      - predict(object,template, which="safe")[1]
+    }
+    profil <- function(z, init=MSLE) {
       template[st] <- z
       ## nested defs so that objfn's template inherits from profil's template 
-      objfn <- function(v) {
-        template[profiledOutPars] <- v 
-        - predict(object,template, which="safe")[1]
-        ## comparer a OKsmooth:::gridfn
-      }
-      optr <- .safe_opt(MSLE[profiledOutPars],objfn=objfn,
-                        lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), verbose=FALSE)
+      
+      plower <- lower[profiledOutPars]
+      pupper <- upper[profiledOutPars]
+      if (inherits(object,"SLik_j")) { # then guess a good init from a high instrumental-distr. density (assuming that logL was used to update this density)
+        init <- .safe_init(object=object, given=template[st], plower, pupper)
+      } 
+      optr <- .safe_opt(init[profiledOutPars],objfn=objfn,
+                        lower=plower,upper=pupper, LowUp=list(), verbose=FALSE, template=template)
       value <- - optr$objective
       if (value>object$MSL$maxlogL+1e-6) {
         next_init <- template
@@ -155,6 +164,7 @@ plot1Dprof <- function(object, ## SLik object
                    logL = maxlogL
     )
     points(MSLE[st],MSLy,pch="+")
+    decorations(st) # if (!is.null(expectation)) abline(v=expectation[st],col="red")
     xscale <- switch(.scales[st],
                      "log" =  makeTicks(exp(x), axis=1,scalefn="log",logticks=TRUE,validRange=c(-Inf,Inf)),
                      "log10"= makeTicks(10^x, axis=1,scalefn="log10",logticks=TRUE,validRange=c(-Inf,Inf)),
@@ -181,7 +191,9 @@ plot2Dprof <- function(object, ## SLik object
                        main, ## main plot name; default deduced from type
                        scales=NULL,
                        plotpar=list(pch=20), ## graphic paratemers, a list of valid arguments for par() 
-                       margefrac = 0
+                       margefrac = 0,
+                       decorations = function(par1,par2) NULL,
+                       ...
 ) {
   lower <- object$lower
   upper <- object$upper
@@ -206,7 +218,8 @@ plot2Dprof <- function(object, ## SLik object
   opar <- par(plotpar, no.readonly = TRUE)
   ##
   np <- length(pars)
-  for (it in seq_len(np-1)) {
+  if (np<3L) stop(paste0("Only ",np," fitted parameters: plot2Dprof() not meaningful; try plot(<object>, filled=TRUE) instead?"))
+  for (it in seq_len(np-1L)) {
     par1 <- pars[it]
     lob <- lower[par1]
     upb <- upper[par1]
@@ -228,7 +241,6 @@ plot2Dprof <- function(object, ## SLik object
         objfn <- function(v) {
           template[profiledOutPars] <- v 
           - predict(object,template, which="safe")[1]
-          ## comparer a OKsmooth:::gridfn
         }
         optr <- .safe_opt(MSLE[profiledOutPars],objfn=objfn,
                           lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), verbose=FALSE)
@@ -274,6 +286,7 @@ plot2Dprof <- function(object, ## SLik object
                                   plot.axes={
                                     axis(1, at=xscale$at, labels=xscale$labels)
                                     axis(2, at=yscale$at, labels=yscale$labels)
+                                    eval(decorations(par1=par1,par2=par2))
                                   },main=main
       )
       cat("\n")

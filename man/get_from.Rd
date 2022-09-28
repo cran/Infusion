@@ -14,8 +14,8 @@ A generic function, whose default method works for list, and with specific metho
 get_from(object, which, ...)
 
 ## S3 methods with additional argument(s)
-\method{get_from}{SLik}(object, which, raw, ...)
-\method{get_from}{SLik_j}(object, which, raw, ...)
+\method{get_from}{SLik}(object, which, raw=FALSE, force=FALSE, ...)
+\method{get_from}{SLik_j}(object, which, raw=FALSE, force=FALSE, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -26,7 +26,10 @@ get_from(object, which, ...)
   Character: names of element to be extracted.
 }
   \item{raw}{
-  Boolean: if TRUE, \code{object[[which]]} is returned, ignoring any more specific processing.
+  Boolean: if TRUE, \code{object[[which]]} is returned, without any particular check of its value. By default, \code{raw} is FALSE and various operations may be performed on the extracted value (see \dQuote{example} below), including optional recomputation if \code{force} is TRUE.
+}
+  \item{force}{
+  Boolean: if TRUE, the extracted element may be computed if it appears to be missing from the \code{object}. This is notably so for \code{which="RMSEs"} or \code{which="par_RMSEs"};  in these cases, the results of the computation are further saved in the original object.
 }
   \item{\dots}{
     further arguments passed to or from other methods (currently not used).
@@ -37,13 +40,22 @@ Will depend on \code{which}, but aims to retain a convenient format backward com
 }
 \seealso{\code{\link{logLik}}.}
 \examples{
-  # 0bserved summary statistics 
-  #  (projected, with raw ones as attribute, if relevant)
-  # get_from(slik, "obs") 
+  # # 0bserved summary statistics 
+  # #  (projected, with raw ones as attribute, if relevant)
+  #   get_from(slik, "obs") 
   # 
-  # On any summary-likelihood object 'slik':
-  # get_from(slik, which="par_RMSEs") # matrix
-  # despite <object>$par_RMSEs being an environment if 
-  #  'slik' was created by version > 1.4.0, as then shown by
-  # get_from(slik, which="par_RMSEs", raw=TRUE)
+  # # On any summary-likelihood object 'slik':
+  #   get_from(slik, which="par_RMSEs") # matrix
+  # # despite <object>$par_RMSEs being an environment if 
+  # #  'slik' was created by version > 1.4.0, as then shown by
+  #   get_from(slik, which="par_RMSEs", raw=TRUE)
+  #
+  # # Further, if 
+  #   get_from(slik, which="par_RMSEs")
+  # # returns NULL because the element is absent from the object, 
+  # # then one can force its computation by 
+  #   get_from(slik, which="par_RMSEs", force=TRUE)
+  # # The result are saved in the 'slik' object, so running again 
+  #   get_from(slik, which="par_RMSEs")
+  # # will no longer return NULL.
 }

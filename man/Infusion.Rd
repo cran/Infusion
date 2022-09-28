@@ -15,8 +15,8 @@
 \details{
   The methods implemented in \code{Infusion} by default assume that the summary statistics have densities. Special values of some statistic, having discrete probability mass, can be handled using the \code{boundaries} attribute of the observed summary statistics (see \code{\link{handling_NAs}} for a further use of this attribute).              
 }
-\note{See workflow examples in \code{\link{example_reftable}} and \code{\link{example_raw}}}
+\note{See examples \code{\link{example_reftable}} for the most complete example using up-to-date workflow, and \code{\link{example_raw_proj}} or \code{\link{example_raw}} for older workflows.}
 \examples{
-  ## see Note.
+  ## see Note for links to examples.
 }
 \keyword{ package }

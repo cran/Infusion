@@ -11,7 +11,7 @@ Infer a (summary) likelihood surface from a simulation table
 \usage{
 infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"), 
                 Simulate = attr(data, "Simulate"), 
-                nbCluster= Infusion.getOption("nbCluster"),
+                nbCluster= seq_nbCluster(nr=nrow(data)),
                 using = Infusion.getOption("mixturing"), 
                 verbose = list(most=interactive(),pedantic=FALSE,final=FALSE),
                 marginalize = TRUE)

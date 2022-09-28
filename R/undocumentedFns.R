@@ -170,6 +170,7 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   return(list(CIs=CIs,bounds=bounds,missingBounds=missingBounds,level=level, warn=NULL)) 
 }
 
+# new variable name
 .makenewname <- function(base,varnames) { ## post CRAN 1.4.1
   varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
   allremainders <- substring(varnames,nchar(base)+1) 
@@ -181,7 +182,33 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
     if (length(allnumericremainders)) {
       num <- max(allnumericremainders)+1L
     } else num <- 1L
-    fvname <-paste ( base , num , sep="") 
+    fvname <- paste ( base , num , sep="") 
   }
   fvname
 }
+
+.generateFileName <- function(base="tmp",ext="") { ## for a file
+  pattern <- paste(base,"*",ext,sep="")
+  allmatches <- dir(pattern=pattern)
+  allremainders <- substring(allmatches,nchar(base)+1)
+  allremainders <- unlist(strsplit(allremainders,ext)) ## removes the extension from the remainder 
+  allremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
+  if (length(allremainders) == 0) {
+    num <- 0
+  } else num <- max(allremainders)+1
+  validFileName <-paste ( base , num , ext,sep="") 
+  return(validFileName)
+}
+
+.lookup <- function(arglist, which=NULL, try_in =NULL) {
+  if ( ! is.null(try_in)) {
+    resu <- .lookup(arglist[[try_in]], which=which, try_in=NULL)
+    if ( ! is.null(resu)) return(resu)
+  }
+  if ( ! is.null(which)) {
+    arglist[[which]]
+  } else arglist
+}
+
+
+
