@@ -6,7 +6,7 @@
   rawstatempdist <- rawstatempdist[,stats, drop=FALSE] # some simulated raw stats might not have been used in the projections
   
   ## We need to check for linear redundancies in the raw stats 
-  rawstatempdist <- check_raw_stats(rawstatempdist,statNames = stats,remove = TRUE, verbose=TRUE) # silent if not problem detected, but still verbose otherwise
+  rawstatempdist <- check_raw_stats(rawstatempdist,statNames = stats,remove = TRUE, verbose=0.5) # silent if not problem detected, but still verbose otherwise
   stats <- colnames(rawstatempdist)
   ##
   projnames <- ls(projectors)
@@ -79,8 +79,8 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
       
       # A good GoF stats should be defined by consideration of some alternative model, but this concept is not available here
       if (is.null(stats)) stats <- .get_gof_stats(projectors, rawstatempdist=rawstatempdist) # trying to get variable with least importance
-      if (verbose) print(paste0("The following raw summary statistics were retained for the GoF test:\n",
-                                  paste(stats,collapse=", ")))
+      if (verbose) cat(paste("The following raw summary statistics were retained for the GoF test:\n",
+                                  paste(stats,collapse=", "),"\n"))
       #
       rawstatempdist <- rawstatempdist[,stats,drop=FALSE]
       statsFitToProj <- qr.solve(statempdist,rawstatempdist) # regression to projected stats (potentially predictors of composite params)
@@ -115,7 +115,7 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
          bg="orange")
   }
   if (feasible) {
-    safe_nbCluster <- get_nbCluster_range(projdata=gofStats)
+    safe_nbCluster <- get_nbCluster_range(projdata=gofStats) # this checks that one cluster (or more) can be fitted (.get_gof_stats() presumably handles that, but it provides only a default value.)
     using <- Infusion.getOption("mixturing")
     gofStats <- as.data.frame(gofStats)
     if (using=="mclust") {
@@ -129,8 +129,6 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
       }
       gofdens <- .get_best_mclust_by_IC(models) 
     } else {
-      # If we're not careful, not even one cluster may be fitted given the large dim of the raw statistics.
-      # .get_gof_stats() should handle that. Maybe its result should be used to update 'feasible'? (__F I X M E__)
       gofdens <- .do_call_wrap("mixmodCluster",list(data=gofStats, 
                                                     nbCluster=safe_nbCluster, 
                                                     models=.do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel"))), 

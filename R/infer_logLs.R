@@ -78,6 +78,7 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
   unlist(c(attr(EDF,"par"),logL,isValid= ! invalid)) 
 }
 
+# Used for the primitive workflow
 infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   stats <- names(stat.obs)
   locEDF <- EDF[,stats,drop=FALSE] 
@@ -87,8 +88,8 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   }
   fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod # using function's default seed =Infusion.getOption("mixmodSeed")
   if (length(fit@nbCluster)==0L) { ## likely degenerate distribution
-    checkfix <- apply(locEDF,2,var)==0
-    ucheckfix <- apply(locEDF[,checkfix,drop=FALSE],2,unique)
+    checkfix <- sapply(locEDF,var)==0
+    ucheckfix <- sapply(locEDF[,checkfix,drop=FALSE],unique)
     ## check that constant simulated statistics match stat.obs
     if (any(ucheckfix != stat.obs[checkfix])) {
       logL <- -.Machine$double.xmax
@@ -99,7 +100,9 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
     }
   } else {
     solve_t_chol_sigma <- lapply(fit@parameters["variance"], function(mat) solve(t(chol(mat))))
-    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),solve_t_chol_sigma=solve_t_chol_sigma,log=TRUE) ## pas de binFactor!
+    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),solve_t_chol_sigma=solve_t_chol_sigma, 
+                    clu_means=t(fit@parameters["mean",]),
+                    logproportions = log(fit@parameters@proportions), log=TRUE) ## pas de binFactor!
     if (invalid <- is.infinite(logL)) {
       #if (verbose) cat("!")
       logL <- -.Machine$double.xmax

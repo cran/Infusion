@@ -41,7 +41,7 @@ setClass("dMixmod",
       simulsMatches <- t(simulsMatches)
       colnames(simulsMatches) <- names(boundaries)
     }
-    simulsAtSomeBoundaries <- apply(simulsMatches,1L,any)
+    simulsAtSomeBoundaries <- matrixStats::rowAnys(simulsMatches)
     SobsMatches <- (stat.obs[names(boundaries)]==boundaries)
     SobsAtSomeBoundaries <- any(SobsMatches)
     if (any(SobsAtSomeBoundaries)) {
@@ -94,7 +94,9 @@ setClass("dMixmod",
     # "the inference method ... must thus ignore all empirical distributions including NA/NaN/inf.": 
     data <- .check_data_post_boundaries(blob$data)
     ## 
-    checkranges <- apply(data,2,range)
+    if (inherits(data,"data.frame")) {
+      checkranges <- sapply(data,range)
+    } else checkranges <- t(matrixStats::colRanges(data))
     rangewidths <- checkranges[2L,]-checkranges[1L,]
     degenerates <- rangewidths<1e-6
     if (any(degenerates)) {
@@ -181,12 +183,13 @@ setClass("dMixmod",
   resu
 }
 
-
 predict.dMixmod <- function(object,
                             newdata, ## should be (reformatted) stat.obs (in canned procedures)
                             tcstat.obs=NULL, ## to avoid checks of arguments
                             solve_t_chol_sigma_list,
-                            log=FALSE,...) {
+                            logproportions,
+                            clu_means,
+                            log=FALSE, ...) {
   varNames <- object@varNames
   if (is.null(tcstat.obs)) {
     if (is.null(dim(newdata))) { ## less well controlled case, but useful for maximization (which is not performed in canned procedures)
@@ -235,27 +238,32 @@ predict.dMixmod <- function(object,
   if (log) { 
     if (nbCluster>0L) {
       nr <- nrow(densitydata)
-      density <- matrix(nrow=nr,ncol=nbCluster)
-      for (k in 1:nbCluster) {
-        density[,k] <- log(object@parameters["proportions", k]) + 
-          .fast_dmvnorm(densitydata, object@parameters["mean", k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
+      if (nr==1L) {
+        logdensity <- numeric(nbCluster)
+        for (k in 1:nbCluster) {
+          logdensity[k] <- logproportions[k] + # log(object@parameters["proportions", k]) + 
+            .fast_dmvnorm(densitydata, clu_means[, k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=TRUE)
+        }
+        maxlogs <- max(logdensity)
+        normalizedlogs <- logdensity - maxlogs 
+        ## exp(normalizedlogs) in (0,1); sum(exp(logLi-maxlog))= exp(-maxlog) sum(exp(logLi))= exp(-maxlog) sum(Li)
+        mixture <- log(sum(exp(normalizedlogs))) + maxlogs ## log(sum(Li))
+      } else {
+        logdensity <- matrix(nrow=nr,ncol=nbCluster)
+        for (k in 1:nbCluster) {
+          logdensity[,k] <- logproportions[k] + # log(object@parameters["proportions", k]) + 
+            .fast_dmvnorm(densitydata, clu_means[, k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=TRUE)
+        }
+        mixture <- matrixStats::rowLogSumExps(logdensity)
       }
-      maxlogs <- numeric(nr)
-      for (it in seq_len(nr)) maxlogs[it] <- max(density[it,]) # maxlogs <- apply(density,1,max)
-      normalizedlogs <- density
-      for (jt in seq_len(nbCluster)) normalizedlogs[,jt] <- normalizedlogs[,jt] - maxlogs # normalizedlogs <- apply(density,2L,`-`,maxlogs) ## highest value per row is 0
-      ## apply return mess again: 
-      if (is.vector(normalizedlogs))  dim(normalizedlogs) <- c(1L, length(normalizedlogs))
-      mixture <- .rowSums(exp(normalizedlogs),m=nrow(normalizedlogs), n=ncol(normalizedlogs)) ## exp(normalizedlogs) in (0,1); sum(exp(logLi-maxlog))= exp(-maxlog) sum(exp(logLi))= exp(-maxlog) sum(Li)
-      mixture <- log(mixture) + maxlogs ## log(sum(Li))
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture + atb*log(freqs)
     } else mixture <- atb*log(freqs)
   } else {
     if (nbCluster>0L) {
       density <- matrix(nrow=nrow(densitydata),ncol=nbCluster)
       for (k in 1:nbCluster) {
-        density[,k] <- object@parameters["proportions", k] * 
-          .fast_dmvnorm(densitydata, object@parameters["mean", k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
+        density[,k] <- logproportions[k] + # object@parameters["proportions", k] * 
+          .fast_dmvnorm(densitydata, clu_means[, k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=FALSE)
       }
       mixture <- .rowSums(density,m=nrow(density), n=ncol(density)) ## sum(Li) 
       if ( !is.null(Sobs_activeBoundaries)) mixture <- mixture*freqs

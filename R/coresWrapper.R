@@ -125,7 +125,6 @@ projpath <- local({
 .eval_Sobs_densities <- function(method, object, cores_info, packages=NULL, stat.obs,logLname,
                                  verbose # list
                                  ) {
-  #prevmsglength <- 0 ## no longer used ?
   if (cores_info$nb_cores > 1L) {
     #blackboxOptions <- blackbox.options() ## FIXME: none of the package options are passed to the child processed
     #InfusionOptions <- Infusion.options()

@@ -11,7 +11,7 @@ As the Title says. Implemented as a method of the \code{predict} generic, for ob
 \method{predict}{SLik_j}(
   object, newdata, log = TRUE, which = "lik", 
   tstat = t(attr(object$logLs, "stat.obs")), 
-  solve_t_chol_sigma_lists = object$solve_t_chol_sigma_lists, 
+  solve_t_chol_sigma_lists = object$clu_params$solve_t_chol_sigma_lists, 
   ...)
 }
 \arguments{

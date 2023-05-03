@@ -29,7 +29,8 @@ infer_SLik_joint(data, stat.obs, logLname = Infusion.getOption("logLname"),
 }
   \item{Simulate}{Either NULL or the name of the simulation function if it can be called from the R session. 
 }
-  \item{nbCluster}{\code{nbCluster} argument of \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}
+  \item{nbCluster}{controls the \code{nbCluster} argument of \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}
+  ; a vector of integers, or \code{"max"} which is interpreted as the maximum of the default \code{nbCluster} value.   
 }
   \item{using}{Either \code{"Rmixmod"} or \code{"mclust"} to select the clustering methods used. 
 }

@@ -9,7 +9,7 @@
 \alias{neuralNet}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Learn a projection method for statistics and applies it 
+Learn a projection method for statistics and apply it 
 }
 \description{
 \code{project} is a generic function with two methods. If the first argument is a parameter name, 
@@ -26,11 +26,12 @@ project(x,...)
 \method{project}{character}(x, stats, data, 
              trainingsize=  eval(Infusion.getOption("trainingsize")),
              train_cP_size= eval(Infusion.getOption("train_cP_size")),
-             method,methodArgs=list(),verbose=TRUE,...)
+             method, methodArgs=list(), verbose=TRUE,...)
 get_projector(...) # alias for project.character
 
 ## S3 method for applying the projection
-\method{project}{default}(x, projectors,...)
+\method{project}{default}(x, projectors, use_oob=Infusion.getOption("use_oob"), 
+                          is_trainset=FALSE, methodArgs=list(), ...)
 get_projection(...) # alias for project.default
 
 plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...) 
@@ -44,6 +45,12 @@ plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...)
   \item{stats}{
   Statistics from which the predictor is to be predicted 
 }
+  \item{use_oob}{
+  Boolean: whether to use out-of-bag predictions for data used in the training set, when such oob predictions are available (i.e. for random forest methods). Default as controlled by the same-named package option, is TRUE. This by default involves a costly check on each row of the input \code{x}, whetehr it belongs to the training set, so it is better to set it to FALSE if you are sure \code{x} does not belong to the training set (for true data in particular). Alternatively the check can be bypassed if you are sure that \code{x} was used as the training set.
+}
+\item{is_trainset}{
+  Boolean. Set it to TRUE if \code{x} was used as the training set, to bypass a costly check (see \code{use_oob} argument). 
+}
   \item{data}{
   A list of simulated empirical distributions, as produced by \code{\link{add_simulation}}, or a data frame with all required variables.
 }
@@ -54,7 +61,7 @@ plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...)
   character string: \code{"REML"}, \code{"GCV"}, or the name of a suitable projection function. The latter may be defined in another package, e.g. \code{"ranger"} or \code{"randomForest"}, or predefined by \verb{Infusion}, or defined by the user. See Details for predefined functions and for defining new ones. The default method is \code{"ranger"} if this package is installed, and \code{"REML"} otherwise. Defaults may change in later versions, so it is advised to provide an explicit \code{method} to improve reproducibility. 
  }
  \item{methodArgs}{
-   A list of arguments for the projection method. The \code{ranger} method is run with some default argument if no \code{methodArgs} are specified. Beware that a NULL \code{methodArgs$splitrule} is interpreted as the \code{"extratrees"} \code{splitrule}, whereas in a direct call to \code{ranger}, this would be interpreted as the \code{"variance"} \code{splitrule}. 
+   A list of arguments for the projection method. For \code{project.character}, the \code{ranger} method is run with some default argument if no \code{methodArgs} are specified. Beware that a NULL \code{methodArgs$splitrule} is interpreted as the \code{"extratrees"} \code{splitrule}, whereas in a direct call to \code{ranger}, this would be interpreted as the \code{"variance"} \code{splitrule}. For \code{project.default}, the only \code{methodArgs} element handled is \code{num.threads} passed to \code{predict.ranger} (which can also be controlled globally by \code{Infusion.options(nb_cores=.)}).   
    
    For other methods, \code{project} kindly (tries to) assign values to the required arguments if they are absent from \code{methodArgs}, according to the following rules:
    

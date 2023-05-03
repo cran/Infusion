@@ -71,8 +71,8 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   }
   #
   form <- as.formula(paste(logLname,"~ 1 + Matern(1|",paste(fittedPars,collapse=" + "),")"))
-  lower <- apply(object,2,min)[fittedPars] ## this should be that of the full object as in the return $lower 
-  upper <- apply(object,2,max)[fittedPars] ## idem
+  lower <- sapply(object,min)[fittedPars] ## this should be that of the full object as in the return $lower 
+  upper <- sapply(object,max)[fittedPars] ## idem
   if (is.null(allFix)) { ## estimation
     stat.obs <- attr(object,"stat.obs")
     if (verbose) cat(paste("\nUsing",method,"to infer the S-likelihood surface...\n"))

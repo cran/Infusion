@@ -3,6 +3,39 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.1.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item add_reftable() allows a more extended interface for the \code{Simulate} function, which may now handle a data frame of parameter values.
+\item New default refine(., nbCluster) value, based on a more definite guess of a good value and aiming at faster analyses. 
+\item New convenient wrapper init_reftable() around the init_grid() function imported from the 'blackbox' package. Infusion now depends on versions >= 1.1.41 of that package, which include a faster init_grid() function. 
+\item plot2Dprof() can use parallelisation. 
+\item plot2Dprof(., pars) syntax extended for more flexible specification of sets of profiles. 
+\item refine.default() gets new argument 'CIs' for more transparent control of CI computations. 
+\item refine.default() can now request parallel execution of ranger(), according to refine()'s 'nb_cores' argument by default, but with refine()'s 'cluster_args' argument further allowing independent control of ranger()'s 'num.threads' independently from 'nb_cores'.  
+\item project.default() gets new arguments 'use_oob' and 'is_trainset' to bypass a costly step in specific (but commonplace) cases; and also argument 'methodArgs'. 
+\item nbCluster="max" syntax allowed in some contexts for fast gaussian mixture modelling by fixing the tried number of clusters to a single value automatically generated. 
+\item The 'xLLiM' package (new 'Suggested' dependency) can be used as an alternative to 'Rmixmod' for joint density modelling, by calling infer_SLik_joint(., using="xLLiM").
+\item New convenience function write_workflow().
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item The structure of 'SLik_j' objects has been modified, meaning that the result of running infer_SLik_joint() has to be re-generated to be compatible with functions of which this object is an argument. 
+\item add_reftable() and add_simulation() gain argument 'parsTable' with is an alias (and now the preferred name) for pre-existing argument 'par.grid'. 
+}
+}
+\subsection{UP-TO-DATE WORKFLOW}{
+\itemize{
+\item The documentations for add_reftable() and add_simulation() have been revised, to better emphasize the inference workflow based on add_reftable() over the primitive workflow based on add_simulation(), and split in different files for clarity. The definitions of the functions have also been revised, mostly in a backward-compatible way, although subtle changes may result in the primitive workflow.    
+}
+}
+\subsection{DEPENDENCY CHANGES}{
+\itemize{
+\item 'matrixStats' is an imported package.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.0.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

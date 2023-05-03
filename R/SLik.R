@@ -11,8 +11,14 @@ refine.SLik <- function(object,method=NULL,...) {
 ## 3 digits on RMSEs makes a lot of digits overall   
 summary.SLik <- function(object, ...) { 
   if ( !is.null(object$MSL) ) {
-    cat(paste("*** Summary ML (",max(object$logLs$cumul_iter)," iterations, ",nrow(object$logLs)," points): ***\n",sep=""))
+    if (inherits((jd <- object$jointdens),"dMixmod")) {
+      nbclustr <- paste(", joint density modeling:",jd@nbCluster,"clusters")
+    } else if (inherits((jd <- object$gllimobj),"gllim")) {
+      nbclustr <- paste(", joint density modeling:",length(jd$pi),"clusters")
+    } else nbclustr <- ""
+    cat(paste("*** Summary ML (",max(object$logLs$cumul_iter)," iterations, ",nrow(object$logLs)," points",nbclustr,"): ***\n",sep=""))
     print(c(object$MSL$MSLE,"logL"=object$MSL$maxlogL,"RMSE_logL"=unname(get_from(object,"RMSEs")[1L])))
+
     # # par_RMSEs
     if ( ! is.null(object$CIobject))  {
       if( ! is.null(object$par_RMSEs))  { # more complete object, supersede CIobject which was used to construct it

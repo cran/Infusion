@@ -17,7 +17,7 @@
     prof_mlogLfn_Dsim <- function(parmv) { 
       fullpar <- template
       fullpar[names(init)] <- parmv
-      - .pointpredict.Rmixmod(object=object, X=fullpar, tstat.obs=newobs, log=log, which="")}
+      - .get_dens_from_GMM(object=object, X=fullpar, tstat.obs=newobs, log=log, which="lik")}
   }
   .safe_opt(init, objfn=prof_mlogLfn_Dsim, lower=lower,upper=upper, LowUp=list(), verbose=FALSE)
 }
@@ -30,8 +30,12 @@
                       ... # parallelisation is possible, but PSOCK is not useful in low-dimensional cases
                       ) { # using gaussian-mixture approximation of distribution of 'data'
   # data simulated given 'BGP' for LRT of 'h0' consistent with BGP
-  statdens_h0 <- .conditional_Rmixmod(object$jointdens, given=BGP, expansion=1) # stat dens|ML parameter estimates
-  statempdist_h0 <- .simulate.MixmodResults(statdens_h0, nsim=1L, size=nsim, drop=TRUE) # directly in projected space
+  if (inherits(object$gllimobj,"gllim")) {
+    statempdist_h0 <- .gllim.condsimul.stats(object$gllimobj, RGPpars=BGP, size=nsim, colTypes=object$colTypes, cbind.=FALSE)
+  } else {
+    statdens_h0 <- .conditional_Rmixmod(object$jointdens, given=BGP, expansion=1) # stat dens|ML parameter estimates
+    statempdist_h0 <- .simulate.MixmodResults(statdens_h0, nsim=1L, size=nsim, drop=TRUE) # directly in projected space
+  }
   if (length(h0_pars)) { # profile
     profiledOutpars <- setdiff(names(BGP), h0_pars)
     prof_init_pars <- BGP[profiledOutpars] # true DGP should be a good starting value
@@ -53,9 +57,9 @@
                                                  lower=prof_lower, upper=prof_upper)
       logL_h0 <- - opt_prof_mlogL_Dsim$objective
       init_h1 <- c(opt_prof_mlogL_Dsim$solution, BGP[h0_pars])[object$colTypes$fittedPars]
-      init_h1 <- .safe_init(object=object, newobs = newobs, plower=object$lower,pupper=object$upper, inits=init_h1)
+      init_h1 <- .safe_init(object=object, newobs = newobs, plower=object$lower,pupper=object$upper, more_inits=init_h1)
     } else {
-      logL_h0 <- .pointpredict.Rmixmod(object, X=BGP, tstat.obs=newobs, log=TRUE, which="")
+      logL_h0 <- .get_dens_from_GMM(object, X=BGP, tstat.obs=newobs, log=TRUE, which="lik")
       init_h1 <- NULL # .safe_init() will be called internally by .optim_mlogL_newobs() 
     }
     opt_mlogL_Dsim <- .optim_mlogL_newobs(object, newobs=newobs,

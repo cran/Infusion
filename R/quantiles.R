@@ -137,8 +137,8 @@ infer_surface.tailp <- function(object,
   purgedlogLs <- purgedlogLs[ purgedlogLs[,tailNames[1]]>0,,drop=FALSE] 
   form <- paste(tailNames,collapse=",")
   form <- as.formula(paste("cbind(",form,") ~ 1 + Matern(1|",paste(fittedPars,collapse=" + "),") + (1|",EDFestLevelName,")"))
-  lower <- apply(object,2,min)[fittedPars] ## this should be that of the full object as in the return $lower 
-  upper <- apply(object,2,max)[fittedPars] ## idem
+  lower <- sapply(object,min)[fittedPars] ## this should be that of the full object as in the return $lower 
+  upper <- sapply(object,max)[fittedPars] ## idem
   if (is.null(allFix)) {
     init.corrHLfit <- list(rho=1/(upper-lower))
     if  (method=="GCV") {

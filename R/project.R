@@ -80,13 +80,14 @@ project <- function(x, ...) UseMethod("project")
 
 project.character <- local({
   RF_warned <- FALSE
+  nThr_warned <- FALSE
   function(x,
            stats,
            data,
            trainingsize= eval(Infusion.getOption("trainingsize")),
            train_cP_size= eval(Infusion.getOption("train_cP_size")),
            method, methodArgs=list(), 
-           #nb_cores= Infusion.getOption("nb_cores"),
+           #nb_cores= Infusion.getOption("nb_cores"), # but see methodArgs$num.threads for ranger
            verbose=TRUE,
            ...) {
     if (x %in% stats) stop(paste0("Given parameter name '",x,"' is one of the statistics' names."))
@@ -215,6 +216,10 @@ project.character <- local({
         if (is.null(methodArgs$importance)) methodArgs$importance <- "permutation"
         if (is.null(methodArgs$num.threads)) methodArgs$num.threads <- 
             max(1L,Infusion.getOption("nb_cores")) # ranger's default is to use all cores!!!  => NULL is distinct from 1L for ranger
+        if ( ! nThr_warned && methodArgs$num.threads==1L && nrow(methodArgs$data)>2000L ) {
+          message(paste("Parallelisation might be useful for ranger() calls. See e.g. 'cluster_args' argument of refine().\n"))
+          nThr_warned <<- TRUE
+        }
         if (is.null(methodArgs$splitrule)) {
           if ("splitrule" %in% names(methodArgs)) { 
             warning("Explicit NULL 'splitrule' in 'methodArgs' is interpreted as 'splitrule=\"extratrees\"', contrary to the ranger() default.'",
@@ -298,9 +303,10 @@ project.character <- local({
 })
 
 # wrapper for handling names 
-.predictWrap <- function(oneprojector,newdata, oob=Infusion.getOption("oob"), 
+.predictWrap <- function(oneprojector,newdata, use_oob=Infusion.getOption("use_oob"), 
                          # Currently only the first two arguments are used so the following default is always obeyed and the ... never used.
                          # nb_cores=Infusion.getOption("nb_cores"), 
+                         is_trainset=FALSE, methodArgs=NULL,
                          ...) {
   if (inherits(newdata,"numeric")) { ## not data.frame...
     ## utils:::str.default(oneprojector) -> function with attributes py_object and project_call
@@ -330,24 +336,38 @@ project.character <- local({
     newdata <- as.data.frame(newdata)
     predict(oneprojector,newdata,...)
   } else if (inherits(oneprojector,"ranger")) { 
-    pred <- predict(oneprojector,data=newdata,
-                    num.threads=max(1L,Infusion.getOption("nb_cores")), # ranger's default is to use all cores!!! => NULL is distinct from 1L for ranger
-                    ...)$predictions 
-    
-    if (oob &&  ! is.null(dim(newdata))) {
-      #message("oob used")
-      x <- oneprojector$call$data[,oneprojector$forest$independent.variable.names, drop=FALSE] # data.frame `==`
-      #(without the drop arg, a 1-col df is reduced to a vector => pb for toy example projecting a 1-dim stat)
-      # removed awful old dist()-based code that memory-failed for large matrices...
-      posinold <- match(data.frame(t(newdata[,colnames(x),drop=FALSE])),data.frame(t(x)) ) # https://stackoverflow.com/questions/12697122/in-r-match-function-for-rows-or-columns-of-matrix
-      newinold <- na.omit(posinold)
-      if (length(newinold)) pred[ ! is.na(posinold)] <- oneprojector$predictions[na.omit(posinold)] # using out-of-bag predictions.
+    # use_oob is TRUE by default
+    # On the training data, this 1st pred is overwritten (inelegantly)
+    # not-oob predictions are retained for:
+    #  * possibly part of the reftable if it is not fully used for training.
+    #  * the stat.obs; and 
+    #  * new simulations from goftest
+    if (is_trainset && use_oob) {
+      pred <- oneprojector$predictions
+    } else {
+      num.threads <- methodArgs$num.threads
+      if (is.null(num.threads)) num.threads <- max(1L,Infusion.getOption("nb_cores")) # ranger's default is to use all cores!!! 
+                                              # => NULL is distinct from 1L for ranger, and must be avoided.
+      pred <- predict(oneprojector,data=newdata,
+                      num.threads=num.threads, 
+                      ...)$predictions 
+      
+      if (use_oob &&  ! is.null(dim(newdata))) {
+        #message("oob used")
+        x <- oneprojector$call$data[,oneprojector$forest$independent.variable.names, drop=FALSE] # data.frame `==`
+        #(without the drop arg, a 1-col df is reduced to a vector => pb for toy example projecting a 1-dim stat)
+        # removed awful old dist()-based code that memory-failed for large matrices...
+        # Next line is slow hence 'use_oob' and 'is_trainset' controls were implemented.
+        posinold <- match(data.frame(t(newdata[,colnames(x),drop=FALSE])),data.frame(t(x)) ) # https://stackoverflow.com/questions/12697122/in-r-match-function-for-rows-or-columns-of-matrix
+        newinold <- na.omit(posinold)
+        if (length(newinold)) pred[ ! is.na(posinold)] <- oneprojector$predictions[na.omit(posinold)] # using out-of-bag predictions.
+      }
     }
     return(pred)
   } else if (inherits(oneprojector,"randomForest")) { 
     pred <- predict(oneprojector,newdata=newdata,...)
     
-    if (oob &&  ! is.null(dim(newdata))) {
+    if (use_oob &&  ! is.null(dim(newdata))) {
       x <- oneprojector$call$x
       posinold <- match(data.frame(t(newdata[,colnames(x),drop=FALSE])),data.frame(t(x)) ) # https://stackoverflow.com/questions/12697122/in-r-match-function-for-rows-or-columns-of-matrix
       newinold <- na.omit(posinold)
@@ -367,7 +387,8 @@ project.character <- local({
 }
 
 # x attributes used late in code, hence x should not be modified
-project.default <- function (x,projectors,...) {
+project.default <- function (x,projectors, use_oob=Infusion.getOption("use_oob"), is_trainset=FALSE, 
+                             methodArgs=list(), ...) {
   #
   if (inherits(projectors,"list")) {
     projectors <- list2env(projectors)
@@ -411,7 +432,8 @@ project.default <- function (x,projectors,...) {
     }
     # ly <- vector("list",length(projectors))
     # for (projit in seq_along(projectors)) ly[[projit]] <- .predictWrap(projectors[[projit]],newdata=x) # fails on projectors being an *environment*
-    ly <- lapply(projectors, .predictWrap, newdata=x) # ordered as names(projectors), not ls(projectors)
+    ly <- lapply(projectors, .predictWrap, newdata=x, use_oob=use_oob, is_trainset=is_trainset,
+                 methodArgs=methodArgs) # ordered as names(projectors), not ls(projectors)
   }
   ly <- do.call(cbind,ly) ## binding is over projectors
   if (is.vector(x)) {
@@ -430,6 +452,7 @@ project.default <- function (x,projectors,...) {
   }
   attr(ly,"Simulate") <- attr(x,"Simulate")
   attr(ly,"control.Simulate") <- attr(x,"control.Simulate")
+  # attr(ly,"Simulate_input") <- attr(x,"Simulate_input")
   attr(ly,"packages") <- attr(x,"packages")
   attr(ly,"env") <- attr(x,"env") ## an environment!
   attr(ly,"workflow_env") <- attr(x,"workflow_env") # copy without modif 

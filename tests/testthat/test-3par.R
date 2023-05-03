@@ -35,7 +35,7 @@ if (Infusion.getOption("example_maxtime")>wout_refine) {
   plot(slik)
   profile(slik,c(mu1=4)) ## profile summary logL for given parameter value
   confint(slik,"mu1") ## compute confidence interval for given parameter
-  plot1Dprof(slik,pars="s2",gridSteps=40) ## 1D profile ## __F I X M E__ check consistency with the MLE after .safe_constrOptim() is fixed
+  plot1Dprof(slik,pars="s2",gridSteps=40) ## 1D profile 
   #
   ## (5) ## refine iteratively
   if (Infusion.getOption("example_maxtime")>(wout_refine+116)) {

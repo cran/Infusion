@@ -18,10 +18,10 @@ if (Infusion.getOption("example_maxtime")>wout_refine) {
   set.seed(123)
   Sobs <- myrnorm2(mu1=4,mu2=2,s2=1,sample.size=40) ## 
   #
-  npoints <- 600
-  parsp <- data.frame(mu1=runif(npoints,min=2.8,max=5.2),
-                      mu2=runif(npoints,min=1,max=3),
-                      s2=runif(npoints,min=0.2,max=3),sample.size=40)
+  parsp <- init_reftable(lower=c(mu1=2.8,mu2=1,s2=0.2), 
+                         upper=c(mu1=5.2,mu2=3,s2=3),
+                         nUnique=600)
+  parsp <- cbind(parsp,sample.size=40)
   simuls <- add_reftable(Simulate="myrnorm2",par.grid=parsp)
   
   # verif that projection works with missing data

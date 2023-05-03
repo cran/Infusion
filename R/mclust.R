@@ -18,7 +18,7 @@
     # "the inference method ... must thus ignore all empirical distributions including NA/NaN/inf.": 
     data <- .check_data_post_boundaries(data)
     ## 
-    checkranges <- apply(data,2,range)
+    checkranges <- sapply(data,range)
     rangewidths <- checkranges[2L,]-checkranges[1L,]
     degenerates <- rangewidths<1e-6
     if (any(degenerates)) {
@@ -147,7 +147,7 @@ predict.dMclust <- function(object,
         density[,k] <- object$parameters$pro[k] * 
           .fast_dmvnorm(densitydata, object$parameters$mean[,k], solve_t_chol_sigma= solve_t_chol_sigma_list[[k]],log=log)
       }
-      maxlogs <- apply(density,1,max)
+      maxlogs <- matrixStats::rowMaxs(density)
       normalizedlogs <- apply(density,2L,`-`,maxlogs) ## highest value per row is 0
       ## apply return mess again: 
       if (is.vector(normalizedlogs))  dim(normalizedlogs) <- c(1L, length(normalizedlogs))

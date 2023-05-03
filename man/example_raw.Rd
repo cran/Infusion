@@ -1,7 +1,7 @@
 \name{example_raw}
 \alias{example_raw}
 %- Also NEED an '\alias' for EACH other topic documented here.
-\title{Workflow for originally described method}
+\title{Workflow for primitive method, without projections}
 \description{
 Example of the workflow with \code{add_simulation}), implementing the method described in the original publication 
 (Rousset et al. 2017 <doi:10.1111/1755-0998.12627>).

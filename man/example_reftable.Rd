@@ -27,6 +27,14 @@ if (Infusion.getOption("example_maxtime")>46) {
                         s2=runif(600L,min=0.4,max=2.4),sample.size=40)
   dsimuls <- add_reftable(,Simulate="blurred",par.grid=parsp_j,verbose=FALSE)
   
+  #- When no 'Simulate' function is provided, 
+  #- but only a data.frame 'toydf' of simulations,
+  #- a formal reference table can be produced by  
+  # dsimuls <- structure(toydf, LOWER=c(mu=2,s2=0,sample.size=40))
+  # dsimuls <- add_reftable(dsimuls)
+  #- where the 'LOWER' attribute tells 
+  #- the parameters apart from the summary statistics.
+  
   ## Construct projections
   mufit <- project("mu",stats=c("mean","var"),data=dsimuls,verbose=FALSE)
   s2fit <- project("s2",stats=c("mean","var"),data=dsimuls,verbose=FALSE)

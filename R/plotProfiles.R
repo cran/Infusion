@@ -20,7 +20,7 @@
   }
   newmax <- MSL(object, eval_RMSEs=FALSE, CIs=FALSE) # with a NEW $MSL environment 
   for (st in ls(newmax$MSL)) object$MSL[[st]] <- newmax$MSL[[st]] ## but keeping the environment (~pointer) unchanged.
-  # so the object$init_from_prof remains
+  # so the object$MSL$init_from_prof remains
 } # only environmentswhere updated, so no return value
 
 
@@ -175,7 +175,11 @@ plot1Dprof <- function(object, ## SLik object
     axis(2)
   }
   MSL_updating <- ( ! is.null(object$MSL$init_from_prof))
-  if (MSL_updating) .MSL_update(object)
+  if (MSL_updating) .MSL_update(object) # this updates the MSL environment of the input object...
+  # ... but leaves the MSL$init_from_prof in it, (there may be forgotten reasons for that...? )
+  # so if we redraw the plots the object will be updated again even if no new max has been found, unless 
+  # we remove it now:
+  object$MSL$init_from_prof <- NULL
   par(opar)
   return(list(MSL_updated=MSL_updating))
 }
@@ -193,17 +197,33 @@ plot2Dprof <- function(object, ## SLik object
                        plotpar=list(pch=20), ## graphic paratemers, a list of valid arguments for par() 
                        margefrac = 0,
                        decorations = function(par1,par2) NULL,
+                       filled.contour.fn = "spaMM.filled.contour",
+                       cluster_args=NULL,
                        ...
 ) {
   lower <- object$lower
+  if ((np <- length(lower))<3L) stop(paste0("Only ",np," fitted parameters: plot2Dprof() not meaningful; try plot(<object>, filled=TRUE) instead?"))
   upper <- object$upper
   if (margefrac >= 0.5) message("'margefrac' argument too large")
   .xylabs <- as.list(pars)
   names(.xylabs) <- pars
   .xylabs[names(xylabs)] <- xylabs
-  np <- length(pars)
-  .scales <- rep("identity",np)
-  names(.scales) <- pars
+  if (is.list(pars)) {
+    parnames <- unique(unlist(pars))
+    parpairs <- expand.grid(pars[[1]],pars[[2]], stringsAsFactors = FALSE)
+    parpairs <- as.matrix(parpairs)
+    parpairs <- parpairs[ (! parpairs[,1]==parpairs[,2]),, drop=FALSE]
+  } else if (is.matrix(pars)) {
+    parpairs <- pars[ (! pars[,1]==pars[,2]),, drop=FALSE]
+    parnames <- unique(parpairs)
+  } else {
+    parnames <- pars
+    parpairs <- t(combn(pars,2))
+  }
+  if (length(wrongnames <- setdiff(parnames,names(lower)))) 
+    stop(paste("Invalid parameter names:",paste(wrongnames,collapse=", ")))
+  .scales <- rep("identity",length(parnames))
+  names(.scales) <- parnames
   .scales[names(scales)] <- scales
   template <- MSLE <- object$MSL$MSLE
   maxlogL <- object$MSL$maxlogL
@@ -216,25 +236,80 @@ plot2Dprof <- function(object, ## SLik object
     )
   } 
   opar <- par(plotpar, no.readonly = TRUE)
-  ##
-  np <- length(pars)
-  if (np<3L) stop(paste0("Only ",np," fitted parameters: plot2Dprof() not meaningful; try plot(<object>, filled=TRUE) instead?"))
-  for (it in seq_len(np-1L)) {
-    par1 <- pars[it]
+
+  # before the loop:
+  cl <- .setCluster(cluster_args=cluster_args, iseed=NULL) # spaMM::.setCluster()
+  # 
+  for (pairit in seq_len(nrow(parpairs))) {
+    parpair <- parpairs[pairit,]
+    par1 <- parpair[1]
+    par2 <- parpair[2]
+    
     lob <- lower[par1]
     upb <- upper[par1]
     marge <- margefrac * (upb - lob)
     xGrid <- seq(lob + marge, upb - marge, length.out = gridSteps)
-    for (jt in (it+1):np) {
-      par2 <- pars[jt]
-      lob <- lower[par2]
-      upb <- upper[par2]
-      marge <- margefrac * (upb - lob)
-      yGrid <- seq(lob + marge, upb - marge, length.out = gridSteps)
-      parpair <- c(par1,par2)
-      if (interactive()) {cat(paste("Computing profile for (", paste(parpair,collapse=","), ")\n",sep=""))}
-      prevmsglength <- 0L
-      profiledOutPars <- setdiff(object$colTypes$fittedPars,parpair)
+    
+    lob <- lower[par2]
+    upb <- upper[par2]
+    marge <- margefrac * (upb - lob)
+    yGrid <- seq(lob + marge, upb - marge, length.out = gridSteps)
+
+    if (interactive()) {cat(paste("Computing profile for (", paste(parpair,collapse=","), ")\n",sep=""))}
+    prevmsglength <- 0L
+    profiledOutPars <- setdiff(object$colTypes$fittedPars,parpair)
+    if (TRUE) {
+      ugly_ad_hoc_fix <- ( is_FORK <- ( ! inherits(cl[[1]],"SOCKnode")) &&
+                             inherits(object$jointdens,"dMixmod") )
+      profil <- function(z) {
+        if (ugly_ad_hoc_fix) suppressPackageStartupMessages(requireNamespace("Rmixmod", quietly = TRUE))
+        template[parpair] <- z
+        ## nested defs so that objfn's template inherits from profil's template 
+        objfn <- function(v) {
+          template[profiledOutPars] <- v 
+          - predict(object,template, which="safe")[1]
+        }
+        optr <- .safe_opt(MSLE[profiledOutPars],objfn=objfn,
+                          lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), verbose=FALSE)
+        value <- - optr$objective
+        if (value>object$MSL$maxlogL+1e-6) {
+          next_init <- template
+          next_init[profiledOutPars] <- optr$solution
+          info <- list(maxlogL=value, init_from_prof=next_init)
+          attr(value,"info") <- info
+        }
+        return(value)
+      } 
+      par_grid <- expand.grid(xGrid,yGrid)
+      par_grid <- t(as.matrix(par_grid))
+      Zvalues <- combinepar(par_grid,     profil, fit_env=list(),  
+                            cluster=cl, 
+                            showpbar = TRUE, 
+                            ################################### ..., # no longer ignored. 
+                            control=list(
+                              .combine=function (a, ...) { # function that combines each profile in a vector, AND
+                                                           # that handles their "info" attributes, returning the best of them, if any.
+                                v <- c(a, ...) # oins preexisting vector and new value(-s, potentially. Does this occur?)
+                                #
+                                dotlist <- list(...)
+                                if (is.null(newinfo <- attr(dotlist[[1]], "info"))) { # if NO info on new value...
+                                  newinfo <- attr(a,"info") #keep preexisting info, if any
+                                } else if ( ! is.null(oldinfo <- attr(a,"info"))) { # else compare to preexisting info, if any...
+                                  if (oldinfo$maxlogL>newinfo$maxlogL) newinfo <- oldinfo # ... and keep the best. 
+                                }
+                                attr(v,"info") <- newinfo
+                                v
+                              }))
+      if ( ! is.null(info <- attr(Zvalues,"info"))) object$MSL$init_from_prof <- info$init_from_prof
+      dim(Zvalues) <- c(length(xGrid),length(yGrid))
+    }  else {
+      if ( ! is.null(cluster_args) ) {
+        cluster_args <- .set_cluster_type(cluster_args=cluster_args) # PSOCK vs FORK
+        if (cluster_args$type=="FORK") {
+          cl <- parallel::makeForkCluster(nnodes = cluster_args$spec) 
+        } else cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
+      } else cl <- NULL
+
       profil <- function(z) {
         template[parpair] <- z
         ## nested defs so that objfn's template inherits from profil's template 
@@ -266,34 +341,41 @@ plot2Dprof <- function(object, ## SLik object
           }
         }
       }
-      maxlogL <- object$MSL$maxlogL
-      Zvalues <- switch(type,
-                  LR = exp(Zvalues-maxlogL),
-                  logLR = Zvalues-maxlogL,
-                  logL = Zvalues
-      )      
-      scalefn <- function(name,values) {
-        switch(.scales[name],
-               "log" =  makeTicks(exp(values), axis=1,scalefn="log",logticks=TRUE,validRange=c(-Inf,Inf)),
-               "log10"= makeTicks(10^values, axis=1,scalefn="log10",logticks=TRUE,validRange=c(-Inf,Inf)),
-               "identity" = list(),
-               stop(paste("unknown scale '",.scales[name],"' for parameter ",name,sep=""))
-        )
-      }
-      xscale <- scalefn(par1,xGrid)
-      yscale <- scalefn(par2,yGrid)
-      spaMM.filled.contour(x = xGrid, y = yGrid, z = Zvalues,xlab=.xylabs[[par1]],ylab=.xylabs[[par2]],
-                                  plot.axes={
-                                    axis(1, at=xscale$at, labels=xscale$labels)
-                                    axis(2, at=yscale$at, labels=yscale$labels)
-                                    eval(decorations(par1=par1,par2=par2))
-                                  },main=main
-      )
-      cat("\n")
     }
+    maxlogL <- object$MSL$maxlogL
+    Zvalues <- switch(type,
+                      LR = exp(Zvalues-maxlogL),
+                      logLR = Zvalues-maxlogL,
+                      logL = Zvalues
+    )      
+    scalefn <- function(name,values) {
+      switch(.scales[name],
+             "log" =  makeTicks(exp(values), axis=1,scalefn="log",logticks=TRUE,validRange=c(-Inf,Inf)),
+             "log10"= makeTicks(10^values, axis=1,scalefn="log10",logticks=TRUE,validRange=c(-Inf,Inf)),
+             "identity" = list(),
+             stop(paste("unknown scale '",.scales[name],"' for parameter ",name,sep=""))
+      )
+    }
+    xscale <- scalefn(par1,xGrid)
+    yscale <- scalefn(par2,yGrid)
+    if (inherits(filled.contour.fn,"character")) filled.contour.fn <- get(filled.contour.fn)
+    filled.contour.fn(x = xGrid, y = yGrid, z = Zvalues,xlab=.xylabs[[par1]],ylab=.xylabs[[par2]],
+                      plot.axes={
+                        axis(1, at=xscale$at, labels=xscale$labels)
+                        axis(2, at=yscale$at, labels=yscale$labels)
+                        eval(decorations(par1=par1,par2=par2))
+                      },main=main
+    )
+    cat("\n")
+    
   }
+  if (length(cl)) parallel::stopCluster(cl)
   MSL_updating <- ( ! is.null(object$MSL$init_from_prof))
-  if (MSL_updating) .MSL_update(object)
+  if (MSL_updating) .MSL_update(object) # this updates the MSL environment of the input object...
+  # ... but leaves the MSL$init_from_prof in it, (there may be forgotten reasons for that...? )
+  # so if we redraw the plots the object will be updated again even if no new max has been found, unless 
+  # we remove it now:
+  object$MSL$init_from_prof <- NULL
   par(opar)
   return(list(MSL_updated=MSL_updating))
 }

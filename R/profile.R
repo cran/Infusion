@@ -3,15 +3,14 @@
 .Infusion.data$options <- list(## should be documented: 
                                LRthreshold= - qchisq(0.999,df=1)/2, 
                                nRealizations=1000,
-                               seq_nbCluster= function(projdata, nr=nrow(projdata)) {seq(ceiling(nr^0.3))}, # M O D I F Y doc if this is modified ! # expression rather than function, so that 1:3 works.
+                               seq_nbCluster= function(projdata, nr=nrow(projdata)) {seq(ceiling(nr^0.3))}, # M O D I F Y doc if this is modified ! 
                                maxnbCluster= function(projdata, nr= nrow(projdata), nc=ncol(projdata)) { # 'projdata' to emphasize that these are not the user-level data (but rather, projected ones)
                                  nr_corr <- (nr*2L) %/% 3L #4 clusters for 200 rows, 6 cols => 171 parameters sometimes fails. 
                                  #                                      So we correct nrow adhocly so that it appear to be less than 171
                                  floor((nr_corr+1L)/(1L+nc*(nc+1L))) # compar nrow to param of free model ((gd+1)*gd+1)*G-1 (cov mat*G + means*G + G-1 proportions)
                                },
                                gof_nstats_fn=function(nr,nstats) floor(nr^(1/3)),  # heuristically balancing gdim and max nbCluster
-                               mixturing="Rmixmod",
-                               #using="Rmixmod", ## or "mclust"
+                               mixturing="Rmixmod", # alternatives: "xLLiM", "mclust"
                                #infer_logL_method="infer_logL_by_Rmixmod", # "infer_logL_by_mclust", ## string for clusterExport !
                                mixmodGaussianModel="Gaussian_pk_Lk_Ck", # all free vs # "Gaussian_pk_Lk_Dk_A_Dk", # shape is constant but volume and orientation are free
                                mclustModel="VVV", ## "VEV", ## equivalent to default mixmodGaussianModel
@@ -20,7 +19,7 @@
                                train_cP_size=quote(.train_cP_size_fn(method_string,stats)),
                                trainingsize=quote(.trainingsize_fn(method_string,stats)),
                                projKnotNbr=1000,
-                               oob=TRUE, # for .predictWrap()
+                               use_oob=TRUE, # for .predictWrap()
                                nodesize=5L, ## that the default for regression by ranger and randomForest # F I X M E see comments where this is used
                                trainsize=quote(nraw/log(nraw)), ## for UNUSED code in update_projectors block 
                                #

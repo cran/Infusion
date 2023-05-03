@@ -42,6 +42,16 @@ slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
 #slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
 slik_j <- refine(slik_j,maxit=5,update_projectors=TRUE)
 plot(slik_j)
+
+if (requireNamespace("xLLiM", quietly=TRUE)) { # workflow with xLLiM::gllim
+  densvx <- infer_SLik_joint(corrSimuls,stat.obs=corrSobs, using="xLLiM")
+  # Usual workflow using inferred surface:
+  slik_jx <- MSL(densvx) ## find the maximum of the log-likelihood surface
+  #slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
+  slik_jx <- refine(slik_jx,maxit=5,update_projectors=TRUE)
+  SLRT(slik_jx, h0=slik_jx$MSL$MSLE+0.1, nsim = 100L) # LRT
+  goftest(slik_jx, nsim = 300L) # goodness of fit test
+} else warning("package 'xLLiM' not available for testing.")
 # etc:
 profile(slik_j,c(mu=4)) ## profile summary logL for given parameter value
 confint(slik_j,"mu") ## compute 1D confidence interval for given parameter

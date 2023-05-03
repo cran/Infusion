@@ -28,16 +28,18 @@ confint.SLik <- function(object, parm, ## parm is the parameter which CI is soug
 }
 
 .init_params_from_pardens <- function(object, 
-                                      given, # always conditional to some values
+                                      given, # always conditional to some values (=> subset of parameter values for the profiles)
                                       profiledNames, # in the default method (max_conddens=FALSE) this only serves to select the returned parameters
                                       plower, pupper,
                                       newobs=NULL) {
   if (inherits(object$jointdens,"Mclust")) { # code not tested (_F I X M E_)
     condpardens <- .conditional_mclust(object$pardens,fittedPars=object$colTypes$fittedPars ,given=given, expansion=1)
     means <- condpardens$parameters$mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
+  } else if (inherits(object$gllimobj,"gllim")) { 
+    # we want the means of the conddens given 'given' , a nclu * length(fittedPars) matrix
+    means <- .condProfoutParMeans.gllim(object$gllimobj, fittedPars=object$colTypes$fittedPars, given=given, expansion=1) 
   } else {
     condpardens <- .conditional_Rmixmod(object$pardens, given=given, expansion=1) 
-    solve_t_chol_sigma_list <- lapply(condpardens@parameters["variance"], .solve_t_cholfn)
     means <- condpardens@parameters@mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
   }
   fittedPars <- object$colTypes$fittedPars
@@ -50,30 +52,6 @@ confint.SLik <- function(object, parm, ## parm is the parameter which CI is soug
   } else best_clu <- which.max(summLik(object, parm=DGPparms, data=newobs, which="safe"))
   resu <- DGPparms[best_clu,profiledNames]
   resu
-}
-
-.safe_init <- function(object, given=NULL, plower, pupper, newobs=NULL, 
-                       inits=NULL, # to add to locally generated ones
-                       profiledNames=names(plower)) { # currently, either 'given' or 'data' must be provided (__F I X M E__ allow neither ? = init global optimization in MSL)
-  logLs <- object$logLs
-  #prev_n_iter <- max(logLs$cumul_iter)
-  #inits <- logLs[logLs$cumul_iter==prev_n_iter,object$colTypes$fittedPars] # useless if we built a large synthetic reference table from many small ones
-  inits <- rbind(inits, logLs[,object$colTypes$fittedPars], object$MSL$MSLE)
-  inits[,names(given)] <- given
-  if (is.null(newobs)) {
-    inits_pred <- predict(object,inits, which="safe")
-    if ( ! is.null(given)) {
-      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper)
-      if (max(inits_pred) > predict(object,c(init[profiledNames],given), which="safe")) init <- unlist(inits[which.max(inits_pred),])
-    } else init <- unlist(inits[which.max(inits_pred),])
-  } else {
-    inits_pred <- summLik(object,inits, data=newobs, which="safe")
-    if ( ! is.null(given)) {
-      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper, newobs=newobs)
-      if (max(inits_pred) > summLik(object,c(init[profiledNames],given), data=newobs, which="safe")) init <- unlist(inits[which.max(inits_pred),])
-    } else init <- unlist(inits[which.max(inits_pred),])
-  }
-  init[profiledNames] # ordered as plower
 }
 
 # generic: profile(fitted,...), returns a # *log*L

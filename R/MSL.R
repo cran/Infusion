@@ -119,17 +119,17 @@ check_raw_stats <- local({
       if (length(lindeps$remove)) {
         if (remove) {
           if (verbose) print(paste0("Variables ",paste(lindeps$remove,collapse=", "),
-                                    ",\n which induce linear dependencies between variables, are removed."))
+                                    ",\n which induce linear dependencies between variables, are removed."), quote=FALSE)
           ok <- setdiff(colnames(x),lindeps$remove)
           x[,ok, drop=FALSE]
         } else {
           print(paste0("Variables ",paste(lindeps$remove,collapse=", "),
-                       " induce linear dependencies between variables, and would better be removed."))
+                       " induce linear dependencies between variables, and would better be removed."), quote=FALSE)
           for (it in seq_along(lindeps$linearCombos)) lindeps$linearCombos[[it]] <- statNames[lindeps$linearCombos[[it]]]
           lindeps
         }
       } else {
-        if (verbose) print("No linear dependencies detected")
+        if (verbose >= 1L) print("No linear dependencies detected", quote=FALSE) # allows 0.5 ...
         if (remove) {
           x
         } else {
@@ -150,7 +150,33 @@ check_raw_stats <- local({
   }
 })
         
-        
+# .safe_init() -> predict(,"safe") assumes that object$thr_dpar has been computed, which is done by MSL()
+.safe_init <- function(object, given=NULL, plower, pupper, newobs=NULL, 
+                       more_inits=NULL, # to add to locally generated ones
+                       base_inits=logLs[,object$colTypes$fittedPars], # as argument => can save subsetting.
+                       profiledNames=names(plower)) { # 
+  logLs <- object$logLs
+  #prev_n_iter <- max(logLs$cumul_iter)
+  #inits <- logLs[logLs$cumul_iter==prev_n_iter,object$colTypes$fittedPars] # useless if we built a large synthetic reference table from many small ones
+  inits <- rbind(more_inits, base_inits, object$MSL$MSLE)
+  inits[,names(given)] <- given
+  if (is.null(newobs)) {
+    inits_pred <- predict(object,inits, which="safe")
+    if ( ! is.null(given)) {
+      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper)
+      if (max(inits_pred) > predict(object,c(init[profiledNames],given), which="safe")) init <- unlist(inits[which.max(inits_pred),])
+    } else init <- unlist(inits[which.max(inits_pred),]) # in MSL() in particular: no 'given' nor 'newobs"
+  } else {
+    inits_pred <- summLik(object,inits, data=newobs, which="safe")
+    if ( ! is.null(given)) {
+      init <- .init_params_from_pardens(object = object, given, profiledNames, plower, pupper, newobs=newobs)
+      if (max(inits_pred) > summLik(object,c(init[profiledNames],given), data=newobs, which="safe")) init <- unlist(inits[which.max(inits_pred),])
+    } else init <- unlist(inits[which.max(inits_pred),])
+  }
+  init[profiledNames] # ordered as plower
+}
+
+
 
 
 # both SLik and SLikp, with different methods used in -> allCIs -> confint
@@ -161,7 +187,7 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
   fittedPars <- object$colTypes$fittedPars
   if (inherits(object,"SLik")) {
     vertices <- object$fit$data[,fittedPars,drop=FALSE]
-    lowup <- apply(vertices,2L,range)
+    lowup <- sapply(vertices,range)
     lower <- lowup[1L,]
     upper <- lowup[2L,]
   } else {
@@ -175,16 +201,15 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
     if (inherits(object,"SLik_j")) {
       object$bootLRTenv <- list2env(list(bootreps_list=list()))
       pred_data <- object$logLs[,fittedPars, drop=FALSE] # checks likelihood of all points to initiate maximization. Should be efficient
-      if (TRUE || is.null(object$thr_dpar)) {
-        pardensv <- predict(object,newdata = pred_data, which="parvaldens")
-        # Used by predict(., which="safe") to remove spurious high logL in parameters regions where it is poorly estimated (low parameter density)
-        object$thr_dpar <- min(max(pardensv)- qchisq(1-(1-level)/2,df=1)/2 , ## (fixme rethink threshold? Actually, the quantile() is lower and more important) 
-                               quantile(pardensv,probs=1/sqrt(length(pardensv)))
-        )
-        #print(object$thr_dpar)
-      } 
-      predsafe <- predict(object,newdata=pred_data, which="safe") 
-      init <- unlist(pred_data[which.max(predsafe), ])
+      #
+      # Define, or redefine, threshold used by predict(., which="safe") to remove spurious high logL in parameters regions where it is poorly estimated (low parameter density)
+      pardensv <- predict(object,newdata = pred_data, which="parvaldens")
+      object$thr_dpar <- min(max(pardensv)- qchisq(1-(1-level)/2,df=1)/2 , ## (fixme rethink threshold? Actually, the quantile() is lower and more important) 
+                             quantile(pardensv,probs=1/sqrt(length(pardensv)))
+      )
+      #print(object$thr_dpar)
+      #
+      init <- .safe_init(object = object, base_inits=pred_data, profiledNames = fittedPars)
     } else {
       init <- unlist(object$obspred[which.max(object$obspred[,attr(object$obspred,"fittedName")]),fittedPars]) 
       init <- init*0.999+ colMeans(vertices)*0.001
@@ -257,7 +282,7 @@ MSL <- function (object,CIs=TRUE,level=0.95, verbose=interactive(),
   prevmsglength <- 0L
   if(CIs) {
     locverbose <- (verbose && ! inherits(object$fit,"HLfit")## for HLfit object, printing is later
-                   && optim_time>3) # guess when it is useful to be verbose from the time to find the maximum 
+                   && optim_time*length(msl$par)>3) # guess when it is useful to be verbose from the time to find the maximum 
     if (locverbose) {
       prevmsglength <- .overcat("Computing confidence intervals...\n", 0L) 
     } 
