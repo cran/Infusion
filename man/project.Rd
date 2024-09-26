@@ -5,7 +5,7 @@
 \alias{get_projector}
 \alias{get_projection}
 \alias{project.default}
-\alias{plot_proj}
+\alias{deforest_projectors}
 \alias{neuralNet}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
@@ -15,9 +15,9 @@ Learn a projection method for statistics and apply it
 \code{project} is a generic function with two methods. If the first argument is a parameter name, 
 \code{project.character} (alias: \code{get_projector}) defines a projection function from several statistics to an output statistic predicting  
 this parameter. \code{project.default}  (alias: \code{get_projection}) produces a vector of projected statistics using such a projection. \code{project} is particularly useful to reduce a large number of summary statistics to a vector of projected summary statistics, with as many elements as parameters to infer. This dimension reduction can substantially speed up subsequent computations. 
-The concept implemented in \code{project} is to fit a parameter to the various statistics available, using machine-learning or mixed-model prediction methods. All such methods can be seen as nonlinear projection to a one-dimensional space. \code{project.character} is an interface that allows different projection methods to be used, provided they return an object of a class that has a defined \code{predict} method with a \code{newdata} argument (as expected, see \code{\link[stats]{predict}}).
+The concept implemented in \code{project} is to fit a parameter to the various statistics available, using machine-learning or mixed-model prediction methods. All such methods can be seen as nonlinear projection to a one-dimensional space. \code{project.character} is an interface that allows different projection methods to be used, provided they return an object of a class that has a defined \code{predict} method with a \code{newdata} argument.
 
-\code{plot_proj} is a hastily written convenience function to plot a diagnostic plot for a projection from an object of class \code{SLik_j}.
+\code{deforest_projectors} is an utility to reduce the saved size of objects containing \pkg{ranger} objects (\code{\link{reproject}} can be used to reverse this). 
 }
 \usage{
 project(x,...)
@@ -25,17 +25,18 @@ project(x,...)
 ## S3 method for building the projection 
 \method{project}{character}(x, stats, data, 
              trainingsize=  eval(Infusion.getOption("trainingsize")),
-             train_cP_size= eval(Infusion.getOption("train_cP_size")),
-             method, methodArgs=list(), verbose=TRUE,...)
+             train_cP_size= eval(Infusion.getOption("train_cP_size")), method, 
+             methodArgs=eval(Infusion.getOption("proj_methodArgs")), 
+             verbose=TRUE, keep_data=TRUE, ...)
 get_projector(...) # alias for project.character
 
 ## S3 method for applying the projection
 \method{project}{default}(x, projectors, use_oob=Infusion.getOption("use_oob"), 
-                          is_trainset=FALSE, methodArgs=list(), ...)
+                          is_trainset=FALSE, methodArgs=list(), ext_projdata, ...)
 get_projection(...) # alias for project.default
 
-plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...) 
-
+##
+deforest_projectors(object)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -46,10 +47,10 @@ plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...)
   Statistics from which the predictor is to be predicted 
 }
   \item{use_oob}{
-  Boolean: whether to use out-of-bag predictions for data used in the training set, when such oob predictions are available (i.e. for random forest methods). Default as controlled by the same-named package option, is TRUE. This by default involves a costly check on each row of the input \code{x}, whetehr it belongs to the training set, so it is better to set it to FALSE if you are sure \code{x} does not belong to the training set (for true data in particular). Alternatively the check can be bypassed if you are sure that \code{x} was used as the training set.
+  Boolean: whether to use out-of-bag predictions for data used in the training set, when such oob predictions are available (i.e. for random forest methods). Default as controlled by the same-named package option, is TRUE. This by default involves a costly check on each row of the input \code{x}, whether it belongs to the training set, so it is better to set it to FALSE if you are sure \code{x} does not belong to the training set (for true data in particular). Alternatively the check can be bypassed if you are sure that \code{x} was used as the training set.
 }
 \item{is_trainset}{
-  Boolean. Set it to TRUE if \code{x} was used as the training set, to bypass a costly check (see \code{use_oob} argument). 
+  Boolean. In a \code{project} call, set it to TRUE if \code{x} was used as the training set, to bypass a costly check (see \code{use_oob} argument). The same logic may apply in a \code{plot_proj} call, except that it is not immediately obvious for users whether the full reference table in an \code{object} was used as the training set, so trying to save time by setting \code{is_trainset=TRUE} requires more insight.
 }
   \item{data}{
   A list of simulated empirical distributions, as produced by \code{\link{add_simulation}}, or a data frame with all required variables.
@@ -75,18 +76,19 @@ plot_proj(object, parm, proj, xlab=parm, ylab=proj, ...)
    \code{method="randomForest:::randomForest.default"}).
  }
   \item{projectors}{
-  A list with elements of the form \code{<name>=<project result>}, where the \code{<name>} must differ from any name of \code{x}. 
-  \code{<project result>} may indeed be the return object of a \code{project} call. 
+  A list with elements of two possible forms: (1) \code{<name>=<project result>}, where the \code{<name>} must differ from any name of \code{x} and \code{<project result>} is the return object of a \code{project} call; or (2) \code{<name>=NULL} where \code{<name>} is the name of a variable (raw summary statistic) in \code{x} (such explicit NULLs are \bold{needed} for any raw statistic to be retained in the projected data; see Value). 
 }
   \item{verbose}{
 Whether to print some information or not. In particular, \code{TRUE}, true-vs.-predicted diagnostic plots will be drawn for projection methods \dQuote{known} by Infusion (notably \code{"ranger"}, \code{"fastai.tabular.learner.TabularLearner"}, \code{"keras::keras.engine.training.Model"}, \code{"randomForest"}, \code{"GCV"}, \code{caret::train}).
 }
-  \item{object}{An object of class \code{SLik_j}.}
-  \item{parm}{Character string: a parameter name.}
-  \item{proj}{Character string: name of projected statistic.}
-  \item{xlab,ylab}{Passed to \code{\link{plot}}.}
+  \item{keep_data, ext_projdata}{
+(experimental, and only when \pkg{ranger} is used). Setting \code{keep_data=FALSE} allows the input data to be removed from the return object of \code{project.character} (where they are otherwise part of its \code{call} element). This may be useful to save memory when multiple projections are based on the same data. However, as this data information is sometimes used, it must then be manually added as element \code{projdata} to the return value of \code{infer_SLik_joint}, and provided to \code{project.default} calls through the \code{ext_projdata} argument.
+}
+  \item{object}{
+An object of class \code{SLik_j}.
+}
   \item{\dots}{
-Further arguments passed to or from other functions. For \code{plot_proj}, they are passed to \code{plot}.
+Further arguments passed to or from other functions. Currently, they are passed to \code{plot}.
 }
 }
 \details{
@@ -97,7 +99,7 @@ Further arguments passed to or from other functions. For \code{plot_proj}, they 
   Machine learning methods such as random forests overfit, \emph{except if} out-of-bag predictions are used. When they are not, the bias is manifest in the fact that using the same simulation table for learning the projectors and for other steps of the analyses tend to lead to too narrow confidence regions. This bias disappears over iterations of \code{\link{refine}} when the projectors are kept constant. \code{Infusion} avoid this bias by using out-of-bag predictions when relevant, when \code{ranger} and \code{randomForest} are used. But it provides no code handling that problem for other machine-learning methods. Then, users should cope with that problems, and at a minimum should not update projectors in every iteration (the \dQuote{\href{https://gitlab.mbb.univ-montp2.fr/francois/Infusion/-/blob/master/documents/InfusionIntro.pdf}{Gentle Introduction to Infusion} may contain further information about this problem}).       
 
   Prediction can be based on a linear mixed model (LMM) with autocorrelated random effects,
-  internally calling the \code{\link[spaMM]{corrHLfit}} function with formula
+  internally calling the \code{\link[spaMM]{fitme}} function with formula
   \code{<parameter> ~ 1+ Matern(1|<stat1>+...+<statn>)}. This approach allows in principle to produce arbitrarily 
   complex predictors (given sufficient input) and avoids overfitting in the same way as restricted likelihood methods avoids overfitting in LMM. REML methods are then used by default to estimate the smoothing parameters. However, faster methods are generally required.
   
@@ -122,8 +124,11 @@ The last two interfaces may yet offer limited or undocumented control: using dee
   
 }
 \value{
-  \code{project.character} returns an object of class returned by the \code{method} (methods \code{"REML"} and \code{"GCV"} will call \code{\link[spaMM]{corrHLfit}} which returns an object of class \code{spaMM})
-  \code{project.default} returns an object of the same class and structure as the input \code{x}, containing the projected statistics inferred from the input summary statistics.
+  \code{project.character} returns an object of the class returned by the called \code{method} (by default, a \code{ranger} object for the up-to-date workflow).
+  
+  \code{project.default} returns an object of the same class and structure as the input \code{x}, containing the variables named in the \code{projectors} argument, each variable being a projected statistics inferred from the input summary statistics, or a summary statistic copied from the input \code{x} (if an \bold{explicit} NULL projector was included for this statistic in the \code{projectors} argument).
+  
+  \code{deforest_projectors} is used for its side effect  (the contents of an environment within the input object been modifed), and returns a character string emphasizing this feature.
 }
 \references{
   Breiman, L. (2001). Random forests. Mach Learn, 45:5-32. <doi:10.1023/A:1010933404324>
@@ -134,6 +139,7 @@ The last two interfaces may yet offer limited or undocumented control: using dee
   T. Hastie, R. Tibshirani, and J. Friedman. The Elements of Statistical Learning: Data Mining, Inference,
 and Prediction. Springer, New York, 2nd edition, 2009.
 }
+\seealso{\code{\link{plot_proj}} and \code{\link{plot_importance}} for diagnostic plots of the projections.}
 \note{See workflow examples in \code{\link{example_reftable}} and \code{\link{example_raw_proj}}.}
 \examples{
   ## see Note for links to examples.

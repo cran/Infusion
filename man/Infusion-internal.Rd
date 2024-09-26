@@ -6,6 +6,7 @@
 \alias{calc.lrthreshold.default} % S3 methods
 \alias{calc.lrthreshold.SLik}
 \alias{calc.lrthreshold.SLikp}
+\alias{str.MAF} 
 \alias{predict.dMixmod}
 \alias{predict.dMclust}
 \alias{predict.SLik}

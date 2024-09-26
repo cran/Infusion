@@ -85,13 +85,13 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
       ranfix <- list(rho=1/gcvres$CovFnParam[fittedPars],
                      nu=gcvres$CovFnParam[["smoothness"]])
       ## we need etaFix given ranFix and the same purgedlogLs
-      thisfit <- HLCor(form,data=purgedlogLs,ranPars=ranfix,HLmethod="REML")
+      thisfit <- fitme(form,data=purgedlogLs,fixed=ranfix,HLmethod="REML")
       ranfix <- c(ranfix,list(lambda=thisfit$lambda,phi=thisfit$phi))  
       etafix <- list(beta=fixef(thisfit))
     } else { ## handles all HLfit methods
-      init.corrHLfit <- list(rho=1/(upper-lower))
+      init <- list(rho=1/(upper-lower))
       if (identical(Infusion.getOption("ESSAI"),TRUE)) {
-        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4),method=method, init=init.corrHLfit) 
+        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4),method=method, init=init) 
         # le code alternatif devrait marcher mais est complique et fragile
       } else {
         ## uses prior weights to reduce influence of extreme points but the prior weight computation is fragile.
@@ -107,15 +107,13 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
         purgedlogLs[[priorwName]] <- (init.phi/sqrt(maxdlogL))^(dlogL/maxdlogL) ## notes 18/07/2016
         ## ## then build a string without "priorwName" in it (but the value of priorwName) (2) convert to expression by parse() (3) eval
         ## thisfit <- eval(parse(text=paste("fitme(form,data=purgedlogLs, fixed=list(nu=4),",
-        ##                                   "method=method, init=init.corrHLfit,prior.weights=",priorwName,")")))
+        ##                                   "method=method, init=init,prior.weights=",priorwName,")")))
         # Much better with weights.form
         weights.form <- as.formula(paste("~", priorwName))
-        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4), method=method, init=init.corrHLfit, weights.form=weights.form)
+        thisfit <- fitme(form,data=purgedlogLs, fixed=list(nu=4), method=method, init=init, weights.form=weights.form)
       }
       RMSE <- sqrt(thisfit$phi)
-      if (thisfit$spaMM.version<"2.4.26") {
-        corrPars1 <- thisfit$corrPars[["1"]]
-      } else corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
+      corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
       ranfix <- c(corrPars1,list(lambda=thisfit$lambda,phi=thisfit$phi))
       ## it is worth fixing the fixed effects if all other params are fixed. Otherwise 
       ## extreme low response values in the 'object' affect the predictionCoeffs and create artificial "valleys" in the predictions
@@ -137,14 +135,14 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
     ranfix <- allFix
     ranfix$beta <- NULL
     # With etaFix vs without it, p_bv is computed differently, except if REMLformula is used
-    thisfit <- corrHLfit(form,data=boundedlogLs,ranFix=ranfix,etaFix=etafix,REMLformula=form)
+    thisfit <- fitme(form,data=boundedlogLs,fixed=ranfix,etaFix=etafix,REMLformula=form, method="REML")
 #    if (verbose) cat(paste("for newdata:",thisfit$APHLs$p_bv,"\n"))    
   } else { ## 'allFix' is TRUE and 'method' is not "newdata"
     etafix <- allFix["beta"]
     ranfix <- allFix
     ranfix$beta <- NULL
     # With etaFix vs without it, p_bv is computed differently, except if REMLformula is used
-    thisfit <- corrHLfit(form,data=purgedlogLs,ranFix=ranfix,etaFix=etafix,REMLformula=form) 
+    thisfit <- fitme(form,data=purgedlogLs,fixed=ranfix,etaFix=etafix,REMLformula=form, method="REML") 
 #    if (verbose) cat(paste("for testing:",thisfit$APHLs$p_bv,"\n"))    
   }
   # 
@@ -161,7 +159,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   .Object$UPPER <- attr(object,"UPPER")
   # thisfit$predictionCoeffs <- predictionCoeffs(thisfit)
   .Object$logLs <- object ## (fittedPars,logL) and attributes (stat.obs) Simulate packages env!
-  obspred <- predict(thisfit,variances=list(linPred=TRUE,dispVar=TRUE),binding=logLname)
+  obspred <- predict(thisfit,variances=list(predVar=TRUE),binding=logLname)
   .Object$obspred <- obspred
   # Qmax
   obsSE <- attr(obspred,"predVar")
@@ -179,6 +177,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 
 ## version that overcome new problems in Rmixmod 2.1.0: we need one clustering to succeed.
 # 1 cluster should always work, so nbCluster=1:2 even if only2 is interesting 
+# Fix for primitve workflow...
 .suspectPts_by_Rmixmod <- function(logls,threshold) {
   clu <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=logls,nbCluster=1:2,seed=123) ))
   if (clu@results[[2L]]@error=="No error") {
@@ -193,6 +192,7 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
   }
 }
 
+# Fix for primitve workflow...
 .suspectPts_by_mclust <- function(logls,threshold) {
   if ("package:mclust" %in% search()) { 
     clu <- .do_call_wrap("Mclust",

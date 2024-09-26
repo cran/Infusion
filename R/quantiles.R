@@ -30,11 +30,11 @@
 .infer_refDensity <- function(object,nRealizations= ## revise
                                10*Infusion.getOption("nRealizations")) { ## from SLik object
   ori_nReal <- Infusion.getOption("nRealizations")
-  refSimul <- add_simulation(,Simulate=attr(object$logLs,"Simulate"),
+  refSimul <- add_simulation(,Simulate=get_from(object,"Simulate"),
                              nRealizations = nRealizations,
-                             par.grid=t(c(object$MSL$MSLE,object$colTypes$fixedPars)))
+                             parsTable=t(c(object$MSL$MSLE,object$colTypes$fixedPars)))
   Infusion.options(nRealizations=ori_nReal)
-  stat.obs <- attr(object$logLs,"stat.obs")
+  stat.obs <- get_from(object,"stat.obs")
   EDF <- (refSimul[[1]])[,names(stat.obs),drop=FALSE]
   histo <- multi_binning(EDF,focal=stat.obs)
   histo$trend <- 1
@@ -84,11 +84,11 @@ infer_tailp <- function(object, ## object is a list of EDFs
 
 confint.SLikp <- function(object, parm, ## parm is the parameter which CI is sought 
                            level=0.95, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE),...) {
-  #level <- 1-(1-level)/2 ## convertit en 0.975 puique mon test est unilat
   # conversion from LRT n df to 1 df to have a 1D confidence interval
   level <- pchisq( qchisq(level, df=length(object$MSL$MSLE)), df=1) ## e.g. 0.9856 pour 2df
   .confintAll(object=object, parm=parm, ## parm is the parameter which CI is sought 
              givenmax = 1,
+             ecdf_2lr=NULL,
              level= - level, verbose=verbose,fixed=fixed,which=which,...)
 }
 
@@ -129,7 +129,7 @@ infer_surface.tailp <- function(object,
   .Object <- list()
   .Object$tailp <- object ## before any modification (bc addition of the <EDFestLevelName> would make rbinding with new tailp complicated)
   .Object$refDensity <- attr(object,"refDensity")
-  attr(object,"refDensity") <- NULL ## so that it is not stored in the corrHLfit outputs...!  
+  attr(object,"refDensity") <- NULL ## so that it is not stored in the fitme outputs...!  
   object[,EDFestLevelName] <-  - seq(nrow(object)) ## '-' makes it easy to define new levels in 'predict'
   ## : (1|<EDFestLevelName>) needed to represent the extra variability of the density estimation procedure (much better)
   purgedlogLs <- object
@@ -140,32 +140,30 @@ infer_surface.tailp <- function(object,
   lower <- sapply(object,min)[fittedPars] ## this should be that of the full object as in the return $lower 
   upper <- sapply(object,max)[fittedPars] ## idem
   if (is.null(allFix)) {
-    init.corrHLfit <- list(rho=1/(upper-lower))
+    init <- list(rho=1/(upper-lower))
     if  (method=="GCV") {
       stop("GCV method not meaningful for infer_surface.tailp. Use PQL instead.")
       method <- "PQL" ## possible fallback 
     }
     if (verbose) cat(paste("\nusing",method,"to infer the S-tail p surface...\n"))
-    thisfit <- corrHLfit(form,data=purgedlogLs,
+    thisfit <- fitme(form,data=purgedlogLs,
                          family=binomial(),
-                         ranFix=list(nu=4),
+                         fixed=list(nu=4),
                          HLmethod=method,
-                         init.corrHLfit=init.corrHLfit) ## clean as one can expect
-    if (thisfit$spaMM.version<"2.4.26") {
-      corrPars1 <- thisfit$corrPars[["1"]]
-    } else corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
+                         init=init)
+    corrPars1 <- get_ranPars(thisfit,which="corrPars")[["1"]]
     allFix <- c(corrPars1,list(lambda=thisfit$lambda))
   } else {
   }
   # 
-  thisfit <- corrHLfit(form,data=object,family=binomial(),HLmethod=method,ranFix=allFix) ## full data smoothed with ranFix from cleaned data
+  thisfit <- fitme(form,data=object,family=binomial(),HLmethod=method,fixed=allFix) ## full data smoothed with ranFix from cleaned data
   .Object$rho <- thisfit$ranFix$rho # density computation uses this
   .Object$colTypes <- colTypes
   .Object$corr.args <- thisfit$ranFix[which(names(thisfit$ranFix) %in% c("nu","Nugget"))]
   .Object$lower <- lower
   .Object$upper <- upper
   # thisfit$predictionCoeffs <- predictionCoeffs(thisfit)
-  obspred <- predict(thisfit,variances=list(linPred=TRUE,dispVar=TRUE),binding=tailNames[1]) 
+  obspred <- predict(thisfit,variances=list(predVar=TRUE),binding=tailNames[1]) 
   .Object$obspred <- obspred ## here is why binding is used
   # Qmax
   obsVar <- attr(obspred,"predVar")
@@ -263,7 +261,7 @@ plot.SLikp <-function(x,y,filled=FALSE,log.=TRUE,...) {
       if (filled) {
         filled.mapMM(object$fit,
                      Ztransf=Ztransf,
-                     color.palette=function(n){spaMM.colors(50,redshift=3)},nlevels=50,
+                     color.palette=.Inf_palette(variant="spaMM_shift3"),nlevels=50,
                      plot.title=quote(title(main=mainst,
                                             xlab=fittedPars[1],ylab=fittedPars[2])),
                      decorations=quote({if (!is.null(object$latestPoints)) points(object$tailp[object$latestPoints,fittedPars],pch=".",cex=2);
@@ -274,7 +272,7 @@ plot.SLikp <-function(x,y,filled=FALSE,log.=TRUE,...) {
         
       } else mapMM(object$fit,
                    Ztransf=Ztransf,
-                   color.palette=function(n){spaMM.colors(50,redshift=3)},nlevels=50,
+                   color.palette=.Inf_palette(variant="spaMM_shift3"),nlevels=50,
                    plot.title=quote(title(main=mainst,
                                           xlab=fittedPars[1],ylab=fittedPars[2])),
                    decorations=quote({if (!is.null(object$latestPoints)) points(object$tailp[object$latestPoints,fittedPars],pch=".",cex=2);

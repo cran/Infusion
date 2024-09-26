@@ -1,6 +1,7 @@
-cat(crayon::yellow("test 3 parameters, with tricky NA's:\n"))
+cat(cli::col_yellow("test 3 parameters, with tricky NA's (but projectors NOT used!):\n"))
 
 wout_refine <- 32
+# Infusion.options(example_maxtime=wout_refine+1)
 if (Infusion.getOption("example_maxtime")>wout_refine) {
   ## (1) function for sampling from 3-parameter gaussian mixture
   myrnorm2 <- function(mu1,mu2,s2,sample.size) {
@@ -14,15 +15,14 @@ if (Infusion.getOption("example_maxtime")>wout_refine) {
     } else return(c(mean=e_mu,var=e_s2,kurt=sum((s-e_mu)^4)/e_s2^2))
   } 
   #
-  ## pseudo-sample, standing for the actual data to be analyzed:  
+  ## simulated data, standing for the actual data to be analyzed:  
   set.seed(123)
   Sobs <- myrnorm2(mu1=4,mu2=2,s2=1,sample.size=40) ## 
   #
   parsp <- init_reftable(lower=c(mu1=2.8,mu2=1,s2=0.2), 
-                         upper=c(mu1=5.2,mu2=3,s2=3),
-                         nUnique=600)
+                         upper=c(mu1=5.2,mu2=3,s2=3))
   parsp <- cbind(parsp,sample.size=40)
-  simuls <- add_reftable(Simulate="myrnorm2",par.grid=parsp)
+  simuls <- add_reftable(Simulate="myrnorm2", parsTable=parsp)
   
   # verif that projection works with missing data
   abyss <- (project("mu1", data=simuls, stats=c("mean","var","kurt")))
@@ -33,7 +33,8 @@ if (Infusion.getOption("example_maxtime")>wout_refine) {
   # Usual workflow using inferred surface:
   slik_j <- MSL(densv) ## find the maximum of the log-likelihood surface
   #slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
-  slik_j <- refine(slik_j,maxit=2,update_projectors=TRUE)
+  slik_j <- refine(slik_j)
+  # slik_j <- refine(slik_j, eval_RMSEs=FALSE)
   plot(slik_j)
   # etc:
   profile(slik_j,c(mu1=4)) ## profile summary logL for given parameter value

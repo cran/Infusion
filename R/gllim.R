@@ -7,7 +7,7 @@
   Q <- solve_t_chol_sigma %*% X
   q <-  colSums(Q^2)
   # c = d * log(2 * pi) + 2 * sum(log(diag(U)))
-  c <- nrow(X) * log(2 * pi) - 2 *attr(solve_t_chol_sigma,"logdet")
+  c <- nrow(X) * .log2pi - 2 *attr(solve_t_chol_sigma,"logdet")
   -(c + q)/2
 }
 
@@ -20,8 +20,62 @@
   return(s)
 }
 
+.wrap_minimize_over_nbClu <- function(init=NULL, objfn, range, trace=FALSE, ...) {
+  fneval <- 0L
+  lower <- min(range)
+  upper <- max(range)
+  range <- upper - lower
+  if (is.null(init)) init <- floor(lower+range/2L)
+  if (trace) print(c(lower=lower,upper=upper,fneval=fneval,init=init))
+  objlist <- list()
+  while (range>0L) {
+    vcinit <- as.character(init)
+    if (is.null(objlist[[vcinit]])) {
+      objlist[[vcinit]] <- objfn(init, ...)
+      fneval <- fneval+1L
+    }
+    objinit <- objlist[[vcinit]]$obj
+    #
+    vp <- min(upper, init+1L)
+    vc <- as.character(vp)
+    if (is.null(objlist[[vc]])) {
+      objlist[[vc]] <- objfn(vp, ...)
+      fneval <- fneval+1L
+    }
+    objp <- objlist[[vc]]$obj
+    #
+    if (objp<objinit) {
+      lower <- vp
+    } else {
+      upper <- init
+      vm <- max(lower, init-1L)
+      vc <- as.character(vm)
+      if (is.null(objlist[[vc]])) {
+        objlist[[vc]] <- objfn(vm, ...)
+        fneval <- fneval+1L
+      }
+      objm <- objlist[[vc]]$obj
+      #
+      if (objm<objinit) {
+        upper <- vm
+      } else lower <- init
+    }
+    #
+    range <- upper - lower
+    init <- floor(lower+range/2L)
+    if (trace) print(c(nextlower=lower,nextupper=upper,fneval=fneval,nextinit=init))
+  }
+  resu <- objlist[[as.character(lower)]]
+  resu$solution <- init
+  resu$fneval <- fneval
+  return(resu)
+}
+
 .wrap_gllim <- function(RGPpars, summstats, nbCluster, cstr=list(Sigma="i")) {
   if (length(nbCluster)>1L) {
+    # Although gllim handles multiple K, 
+    # it does not return enough info to extract the model with minimal AIC.
+    # So each K must be fitting independently.
     objfn <- function(RGPpars,summstats, K, cstr=list(Sigma="i")) {
       cluObject <- .do_call_wrap("gllim",arglist=list(tapp=RGPpars, yapp=summstats,in_K=K, cstr=cstr), 
                                  pack="xLLiM")
@@ -30,13 +84,14 @@
       AIC <- -2*logL+2*df
       return(list(obj=AIC, cluObject=cluObject))
     }
-    resu <- .minImIze(init=NULL, objfn=objfn, range=nbCluster, trace=FALSE, RGPpars=RGPpars, 
+    resu <- .wrap_minimize_over_nbClu(init=NULL, objfn=objfn, range=nbCluster, trace=FALSE, RGPpars=RGPpars, 
                       summstats=summstats, cstr=cstr)$cluObject   
   } else resu <- .do_call_wrap("gllim",arglist=list(tapp=RGPpars, yapp=summstats,in_K=nbCluster, cstr=cstr), pack="xLLiM")
   
   nclu <- length(resu$pi)
   
   RGP_COVlist <- logl_COVlist <- vector("list", nclu)
+  chk <- TRUE
   for (k in seq_len(nclu)) {
     COV <- resu$Gamma[,,k] 
     # coerced to scalar if dims are 1, while drop=FALSE would keep it as array. Neither is OK , we need matrix =>
@@ -45,14 +100,17 @@
     RGP_COVlist[[k]] <- COV
     #
     COV <- resu$Sigma[,,k] 
+    chk <- chk && all(diag(COV<1e-7))
     if (is.null(dim(COV)))  dim(COV) <- c(1L,1L)
     logl_COVlist[[k]] <- COV
   }
+  if (chk) stop("gllim produced a degenerate resu$Sigma.")
   resu$RGP_COVlist <- RGP_COVlist
   resu$logl_COVlist <- logl_COVlist
   
   resu$clu_params$solve_t_chol_sigma_lists <- list(
     logldens=apply(resu$Sigma, 3, .solve_t_cholfn, simplify=FALSE), # of the N(y: Ak.x+bk, Sigmak) => log logLik of parms 'x' when used as function of x
+    # Thus Sigma is is projected-stats space but only relevant for the 'data'
     RGPdens=lapply(RGP_COVlist, .solve_t_cholfn) # of the N(x: ck, Gammak) => marginal distrib of params in the reftable
   )
   
@@ -60,8 +118,8 @@
   resu
 }
 
+## This gives the logL of 'newRGPpars' when 'projstats'= stat.obs
 # Algebra as in xLLiM::gllim_inverse_map which also compute the pars of the reciprocal conditional, never needed in Infusion
-
 .logL.gllim <- function(object, # gllim result
                         newRGPpars, # Reftable Generating Process parameters. Must have dim
                         projstats, log) {
@@ -79,7 +137,9 @@
     muk <- tcrossprod(Ak, newRGPpars) + object$b[, k]
     proj[k, ] <- .fast_dmvnorm(x = projstats, mean = muk, 
                                solve_t_chol_sigma=solve_t_chol_logl[[k]], log = FALSE)
-    condcluprobs[, k] <- log(object$pi[k]) + .loggausspdf(t(newRGPpars), mu=object$c[, k, drop = FALSE], solve_t_chol_RGP[[k]])
+    # Pr(k and pars) from prior Pr(k) and Pr(pars;k)
+    condcluprobs[, k] <- log(object$pi[k]) + 
+      .loggausspdf(t(newRGPpars), mu=object$c[, k, drop = FALSE], solve_t_chol_RGP[[k]])
   }
   den <- .logsumexp(condcluprobs)
   condcluprobs <- sweep(condcluprobs, 1, den, "-")
@@ -131,9 +191,18 @@
   if (which == "parvaldens") return(parvaldens)
   if (which=="safe") {
     if (log) {
-      condvaldens <- condvaldens + pmin(0,parvaldens-object$thr_dpar) # decreasing returned logL when parvaldens<object$thr_dpar
+      thr_info <- .get_thr_info(object)
+      ddens <- parvaldens-thr_info$thr_dpar
+      negddens <- (ddens<0)
+      if (any(negddens)) {
+        dlogl <- condvaldens-thr_info$reft_maxlogl
+        posdlogl <- dlogl>0
+        highextrapol <- negddens & posdlogl
+        # make it continuous wrt to dlogl, but strongly compensating in most cases
+        condvaldens[highextrapol] <- condvaldens[highextrapol]+ sqrt(dlogl[highextrapol])*ddens[highextrapol]
+      }
     } else {
-      condvaldens <- condvaldens*pmin(1,parvaldens/object$thr_dpar)
+      stop("code missing here")
     }
     return(condvaldens)
   }
@@ -233,7 +302,7 @@
   resu
 }
 
-..simulate.gllimX <- function(object, size, colTypes) {
+..simulate.gllimX <- function(object, size, parNames) {
   nclu <- length(object$pi)
   rclu <- sample(seq(nclu), size=size, prob=object$pi, replace=TRUE) 
   rclutable <- table(rclu)
@@ -244,15 +313,15 @@
     simuls[[char_k]] <- rmvnorm(rclutable[char_k], mean=object$c[, k], sigma= RGP_COVlist[[k]])
   }
   simuls <- do.call(rbind, simuls)
-  colnames(simuls) <- colTypes$fittedPars
+  colnames(simuls) <- parNames
   return(simuls)
 }
 
 .simulate.gllimX <- function(object, 
-                            nsim=1L, # size of list of bootstrap replicates
                             seed=NULL, 
                             size=1L, # number of points for each simulation 
-                            colTypes, 
+                            parNames, 
+                            n_tables=1L,  # for # of reftables = # of bootstrap replicates
                             ...
 ) {
   ## RNG stuff copied from simulate.lm
@@ -264,13 +333,13 @@
     on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
   #
-  if (nsim>1L) {
-    resu <- vector("list",  nsim)
+  if (n_tables>1L) {
+    resu <- vector("list",  n_tables)
     for (it in seq_along(resu)) {
-      resu[[it]] <- ..simulate.gllimX(object, size=size, colTypes=colTypes) 
+      resu[[it]] <- ..simulate.gllimX(object, size=size, parNames=parNames) 
     }
     resu
-  } else ..simulate.gllimX(object, size=size, colTypes=colTypes) 
+  } else ..simulate.gllimX(object, size=size, parNames=parNames) 
 }
 
 .condProfoutParMeans.gllim <- function(gllimobj, fittedPars, 
@@ -292,5 +361,40 @@
   condmeans # matrix nclu * # profiledOutPars
 }
 
-
+#  ____F I X M E___ hard checks for .conditional_gllimobj?
+.conditional_gllimobj <- function(gllimobj, fittedPars, given, expansion=Infusion.getOption("expansion")) {  # expansion=1 to get the conditional distribution
+  proportions <- gllimobj$pi
+  nbCluster <- length(proportions)
+  condcluprobs <- numeric(nbCluster)
+  MEAN <- t(gllimobj$c)
+  givenNames <- names(given)
+  colnames(MEAN) <- fittedPars
+  For <- setdiff(fittedPars,givenNames) 
+  condmeans <- MEAN[,For,drop=FALSE] # resizes, but will be modified
+  RGP_COVlist <- gllimobj$RGP_COVlist
+  for (clu_it in seq_len(nbCluster)) {
+    COV <- RGP_COVlist[[clu_it]]
+    sig22 <-  COV[givenNames,givenNames,drop=FALSE]
+    sig12 <-  COV[For,givenNames,drop=FALSE]
+    mean2 <- MEAN[clu_it,givenNames]
+    rhs <- try(solve(sig22,given-mean2), silent=TRUE)
+    if (inherits(rhs,"try-error")) {
+      sig22  <- regularize(sig22)
+      rhs <- solve(sig22,given-mean2)
+    }
+    condmeans[clu_it,] <- MEAN[clu_it,For] + sig12 %*% rhs
+    sig11 <- COV[For,For,drop=FALSE]
+    RGP_COVlist[[clu_it]] <- expansion* (sig11 - sig12 %*% solve(sig22,t(sig12))) 
+    condcluprobs[clu_it] <- 
+      log(proportions[clu_it])+dmvnorm(t(given), # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
+                                       mean2, sigma= sig22, log=TRUE)
+  }
+  gllimobj$c <- t(condmeans)
+  gllimobj$RGP_COVlist <- RGP_COVlist
+  if (is.null(dim(condcluprobs))) dim(condcluprobs) <- c(1L,length(condcluprobs))
+  den <- .logsumexp(condcluprobs)
+  condcluprobs <- sweep(condcluprobs, 1, den, "-")
+  gllimobj$pi <- exp(condcluprobs)
+  gllimobj 
+}
 

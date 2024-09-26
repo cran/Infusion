@@ -7,7 +7,7 @@
 Saved computations of inferred log-likelihoods
 }
 \description{
-These are saved results from toy examples used in other documentation page for the package. It gives estimates by simulation of log-likelihoods of the \code{(mu,s2)} parameters of a Gaussian distribution for a given sample of size 20 with mean 4.1416238 and (bias-corrected) variance 0.9460778. \code{densv} is based on the sample mean and sample variance as summary statistics, and \code{densb} on more contrived summary statistics.   
+These are saved results from toy examples used in other documentation page for the package. They give estimates by simulation of log-likelihoods of the \code{(mu,s2)} parameters of a Gaussian distribution for a given sample of size 20 with mean 4.1416238 and (bias-corrected) variance 0.9460778. \code{densv} is based on the sample mean and sample variance as summary statistics, and \code{densb} on more contrived summary statistics.   
 }
 \usage{
 data("densv")

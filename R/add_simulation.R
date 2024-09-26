@@ -1,12 +1,35 @@
 init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL, 
-                           nUnique = NULL, maxmin=TRUE, jitterFac = 0.5) {
-  init_grid(lower = lower, upper = upper, steps = steps, 
+                           nUnique = NULL, 
+                           maxmin=(nUnique * length(lower)^2)<400000L, 
+                           jitterFac = 0.5,
+                           constr_crits=NULL, ...) {
+  if (is.null(nUnique)) {
+    np <- length(which(upper[names(lower)] != lower))
+    nUnique <- get_workflow_design(np, ...)$init_reft_size
+    if (missing(maxmin)) maxmin <- (nUnique * length(lower)^2)<400000L
+  }
+  parsTable <- init_grid(lower = lower, upper = upper, steps = steps, 
             nUnique = nUnique, maxmin=maxmin, jitterFac = jitterFac, nRepl = 0L)  
+  if ( ! is.null(constr_crits)) { # selection of points that satisfy parameter constraints
+    constrs <- apply(parsTable,1L, function(v) all(eval(constr_crits, envir = as.list(v))<0))
+    parsTable <- parsTable[constrs,, drop=FALSE]
+    while (nrow(parsTable)< nUnique) {
+      message(paste0(sum( ! constrs)," points not satisfying constraints: sampling new points..."))
+      morepts <- init_grid(lower = lower, upper = upper, steps = steps, 
+                             nUnique = nUnique, maxmin=maxmin, jitterFac = jitterFac, nRepl = 0L)  
+      constrs <- apply(morepts,1L, function(v) all(eval(constr_crits, envir = as.list(v))<0))
+      morepts <- morepts[constrs,, drop=FALSE]
+      parsTable <- rbind(parsTable, morepts)
+    }
+    if (nrow(parsTable)> nUnique) parsTable <- parsTable[1:nUnique,, drop=FALSE]
+  }
+  parsTable
 }
 
 `[.reftable` <- function (x, i, j, 
-                          dropcol = TRUE, ## replicating default [.data.frame behaviour to allow selecting a single column as a vector, for plots etc 
-                          rowdrop = FALSE ## contrary to the data.frame default, which may produce a list-not-data-frame
+                          drop = TRUE, ## replicating default [.data.frame behaviour to allow selecting a single column as a vector, for plots etc 
+                          rowdrop = FALSE, ## contrary to the data.frame default, which may produce a list-not-data-frame
+                          dropcol=drop # resolves partial-match issues
 ) {
   class(x) <- "data.frame" ## avoids recursive call to `[.reftable
   if (missing(i)) {
@@ -17,7 +40,9 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
     resu <- x[i, , drop=rowdrop]
   } else {
     resu <- x[ ,j, drop=dropcol]
-    resu <- resu[i, , drop=rowdrop]
+    if (is.null(dim(resu))) { # col dim has been dropped
+      resu <- resu[i]
+    } else resu <- resu[i, , drop=rowdrop] 
   }
   if (is.data.frame(resu)) {
     attrx <- attributes(x)
@@ -33,15 +58,13 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
   return(resu)
 } # Use unlist() to remove attributes from the return value
 
-.warn_once_progressr <- local({
-  progressr_warned <- FALSE
-  function() {
-    if ( ! progressr_warned) {
-      message("If the 'progressr' package were attached, a progress bar would be available.")
-      progressr_warned <<- TRUE
+.warn_once_progressr <- function() {
+    if ( ! .one_time_warnings$progressr_warned) {
+      message("If the 'progressr' package were attached, a progress bar would be available.") 
+      # attached, not simply installed => requires user action
+      .one_time_warnings$progressr_warned <- TRUE
     } 
   }
-})
 
 .simulate_by_row <- function(Simulate, parsTable,
                              nRealizations,
@@ -61,7 +84,7 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
     # Infusion not leaded in child process !
     #parallel::clusterExport(cl, list("nRealizations"),envir=environment()) 
     #parallel::clusterCall(cl,fun=Infusion.options,nRealizations=nRealizations)
-    if ( ! is.null(env)) parallel::clusterExport(cl=cl, ls(env),envir=env)
+    if ( ! is.null(env)) parallel::clusterExport(cl=cl, ls(envir=env),envir=env)
   }
   as_one <- identical(names(nRealizations),"as_one")
   if (as_one) { 
@@ -87,7 +110,7 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
         pb_char <- "n" # nested
       }
       dotenv <- list2env(list(Simulate=Simulate) )
-      parallel::clusterExport(cl=repl_cl, ls(dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+      parallel::clusterExport(cl=repl_cl, ls(envir=dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
     } else pb_char <- "s"
     param_cl <- NULL
   } else {
@@ -99,7 +122,7 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
         pb_char <- "p"
       }
       dotenv <- list2env(list(Simulate=Simulate) )
-      parallel::clusterExport(cl=param_cl, ls(dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
+      parallel::clusterExport(cl=param_cl, ls(envir=dotenv),envir=dotenv) ## exports eg "myrnorm": works for pbapply:: by not doSNOW     
     } else pb_char <- "s"
     repl_cl <- NULL 
   }
@@ -173,12 +196,14 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
   ##################################################################################################"
   if (length(param_cl) > 1L) { ## ~ .run_cores, but object -> parsTable, list element -> ii index, and using param_cl
     if ( ! is.null(cl_seed) ) {
-      ori <- RNGkind("L'Ecuyer-CMRG")
+      ori <- RNGkind("L'Ecuyer-CMRG") # clusterSetRNGStream() re-calls it
       set.seed(cl_seed)
     }
     if (cluster_args$type=="FORK") {
       #if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
       mc.silent <- TRUE # no 'control' argument in contrast to spaMM::dopar
+      #if (is.null(mc.preschedule <- control$mc.preschedule)) mc.preschedule <- TRUE 
+      mc.preschedule <- TRUE # no 'control' argument in contrast to spaMM::dopar   (___F I X M E___?)
       has_progressr <- ("package:progressr" %in% search())
       seq_nr <- seq_len(nrow(parsTable))
       if (has_progressr) {
@@ -195,13 +220,15 @@ init_reftable <- function (lower = c(par = 0), upper = c(par = 1), steps = NULL,
             res
           }
           gridsimuls <- try(
-            parallel::mclapply(seq_nr, FUN = p_simfn_per_par, mc.silent=mc.silent, mc.cores=nb_cores)
+            parallel::mclapply(seq_nr, FUN = p_simfn_per_par, mc.silent=mc.silent, mc.cores=nb_cores,
+                               mc.preschedule = mc.preschedule)
           )
         })
       } else {
         .warn_once_progressr()
         gridsimuls <- try(
-          parallel::mclapply(seq_nr, FUN = simfn_per_par, mc.silent=mc.silent,  mc.cores=nb_cores)
+          parallel::mclapply(seq_nr, FUN = simfn_per_par, mc.silent=mc.silent,  mc.cores=nb_cores,
+                             mc.preschedule = mc.preschedule)
         )
       }
       bootreps <- do.call(rbind,gridsimuls)
@@ -266,11 +293,43 @@ add_simulation <- function(simulations=NULL, Simulate, parsTable=par.grid, par.g
                cluster_args=cluster_args, cl_seed=cl_seed, ...)
 } 
 
+# handling the various Simulate() formals
+.wrap_Simulate <- function(Simulate, parsTable, reftable=NULL, 
+                           nRealizations=1L, verbose=interactive(), nb_cores=NULL, packages=NULL,env=NULL,
+                           control.Simulate=NULL,
+                           cluster_args=list(), cl_seed=NULL) {
+  if ("parsTable" %in% names(formals(Simulate))) {
+    Simulate_input <- "parsTable"
+    arglist <- control.Simulate
+    arglist$parsTable <- parsTable
+    gridsimuls <- do.call(Simulate, arglist)
+    gridsimuls <- cbind(parsTable, gridsimuls)
+    reftable <- rbind(reftable, gridsimuls)
+  } else {
+    Simulate_input <- "vector_as_args"
+    gridsimuls <- .simulate_by_row(Simulate=Simulate, parsTable=parsTable,
+                                   nRealizations=nRealizations, control.Simulate=control.Simulate, 
+                                   verbose=verbose, # controls the progress bar... 
+                                   nb_cores=nb_cores, packages=packages, env=env,
+                                   cluster_args=cluster_args, cl_seed=cl_seed)
+    if (nRealizations>1) {
+      reftable <- c(reftable,gridsimuls) 
+    } else { ## nRealizations=1 (~ABC reference table)
+      gridsimuls <- do.call(rbind,gridsimuls) # matrix
+      gridsimuls <- cbind(parsTable,gridsimuls) # data.frame bc called with parsTable data frame
+      reftable <- rbind(reftable,gridsimuls)
+    }
+  }
+  reftable # data frame (in up to date workflow)
+}
+
+
 add_reftable <- function(reftable=NULL, Simulate, parsTable=par.grid, par.grid=NULL,
                          nRealizations=1L,
                          newsimuls=NULL, verbose=interactive(), nb_cores=NULL, packages=NULL,env=NULL,
                          control.Simulate=NULL,
                          cluster_args=list(), cl_seed=NULL, 
+                         constr_crits=NULL,
                          ...) {
   if (is.null(control.Simulate)) control.Simulate <- list(...)
   if ( ! is.null(reftable)) {
@@ -283,34 +342,35 @@ add_reftable <- function(reftable=NULL, Simulate, parsTable=par.grid, par.grid=N
   if ( ! is.null(parsTable)) {
     if ( ! inherits(parsTable,"data.frame")) stop("'parsTable' argument is not a data.frame")
     #if ( ! inherits(Simulate,"character")) stop("'Simulate' must be a character string")
-    if ( inherits(Simulate,"character")) Simulate <- eval(parse(text=Simulate))   # __F I X M E__ or get() ?
-    if ("parsTable" %in% names(formals(Simulate))) {
-      Simulate_input <- "parsTable"
-      arglist <- control.Simulate
-      arglist$parsTable <- parsTable
-      gridsimuls <- do.call(Simulate, arglist)
-      gridsimuls <- cbind(parsTable, gridsimuls)
-      reftable <- rbind(reftable, gridsimuls)
-    } else {
-      Simulate_input <- "vector_as_args"
-      gridsimuls <- .simulate_by_row(Simulate=Simulate, parsTable=parsTable,
-                                      nRealizations=nRealizations,
-                                      verbose=verbose, nb_cores=nb_cores, packages=packages,env=env,
-                                      control.Simulate=control.Simulate,
-                                      cluster_args=cluster_args, cl_seed=cl_seed)
-      if (nRealizations>1) {
-        reftable <- c(reftable,gridsimuls) 
-      } else { ## nRealizations=1 (~ABC reference table)
-        gridsimuls <- do.call(rbind,gridsimuls)
-        gridsimuls <- cbind(parsTable,gridsimuls)
-        reftable <- rbind(reftable,gridsimuls)
-      }
-    }
     
+    if ( ! is.null(constr_crits)) { # Possible selection of points that satisfy parameter constraints. HOWEVER
+      # The doc explains that it is better to use constr_crits when calling init_reftable() than 
+      # add_reftable() [similarly, refine() use them at the .rparam step]
+      constrs <- apply(parsTable,1L, function(v) all(eval(constr_crits, envir = as.list(v))<0))
+      parsTable <- parsTable[constrs,, drop=FALSE]
+    }
+
+    if ( inherits(Simulate,"character")) Simulate <- eval(parse(text=Simulate))   # __F I X M E__ or get() ?
+    reftable <- .wrap_Simulate(Simulate, control.Simulate=control.Simulate, parsTable=parsTable, 
+                               reftable=reftable, nRealizations=nRealizations, 
+                               verbose=verbose, # controls the progress bar... 
+                               nb_cores=nb_cores, packages=packages, env=env,
+                               cluster_args=cluster_args, cl_seed=cl_seed)
+    chk_LOWER <- sapply(parsTable,min)
     lowersList$pargrid <- attr(parsTable,"LOWER") ## not necessarily present
-    if (is.null(lowersList$pargrid)) lowersList$pargrid <- sapply(parsTable,min)
+    if (is.null(lowersList$pargrid)) {
+      lowersList$pargrid <- chk_LOWER
+    } else if (any(chk_LOWER<lowersList$pargrid)) warning(
+      "The reftable appears not to satisfy its 'LOWER' attribute.\n Inefficiencies and confusion may result.",
+      immediate. = TRUE)
+    
+    chk_UPPER <- sapply(parsTable,max)
     uppersList$pargrid <- attr(parsTable,"UPPER")
-    if (is.null(uppersList$pargrid)) uppersList$pargrid <- sapply(parsTable,max)
+    if (is.null(uppersList$pargrid)) {
+      uppersList$pargrid <- chk_UPPER
+    } else if (any(chk_UPPER>uppersList$pargrid)) warning(
+      "The reftable appears not to satisfy its 'UPPER' attribute.\n Inefficiencies and confusion may result.",
+      immediate. = TRUE)
   }
     
   if ( ! is.null(newsimuls)) { ## user input 'newsimuls'
@@ -327,13 +387,14 @@ add_reftable <- function(reftable=NULL, Simulate, parsTable=par.grid, par.grid=N
     } else { ## also for SLik_j: otherwise the parNames info cannot be certain...
       lowersList$newLOWER <- LOWER <- attr(newsimuls,"LOWER") 
       if (is.null(LOWER)) stop('Please provide attr(newsimuls,"LOWER")')
+      if (is.null(names(LOWER))) stop('attr(newsimuls,"LOWER") should be a named vector (and UPPER too).')
       lowersList$new <- sapply(newsimuls[ ,names(LOWER)],min) # values in LOWER are ingored; names are used
       uppersList$newUPPER <- attr(newsimuls,"UPPER")
       #if (is.null(uppersList$newUPPER)) stop('Please provide attr(newsimuls,"UPPER")') #not necessary
       lowersList$new <- sapply(newsimuls[ ,names(LOWER)],max)
     }
   }
-  attr(reftable,"LOWER") <- do.call(pmin,lowersList) # pmin over sucessive parameters across lowersList members ($pargrid, $new...)
+  attr(reftable,"LOWER") <- do.call(pmin,lowersList) # pmin over successive parameters across lowersList members ($pargrid, $new...)
   attr(reftable,"UPPER") <- do.call(pmax,uppersList)
   if ( ! missing(Simulate)) attr(reftable,"Simulate") <- Simulate
   attr(reftable,"control.Simulate") <- control.Simulate
@@ -345,10 +406,10 @@ add_reftable <- function(reftable=NULL, Simulate, parsTable=par.grid, par.grid=N
     if (inherits(chk <- try(data.matrix(reftable), silent=TRUE),"try-error")) {
       condmess <- attr(chk,"condition")$message
       warning(paste(
-        crayon::underline("Format of reference table is suspect and likely to lead to a later error;\n"),
-        crayon::underline("   trying to convert the table to a matrix led to the error\n   "),
-        crayon::inverse(condmess),
-        crayon::underline("\n    It may be worth checking the simulation program and simulation arguments.")
+        cli::style_underline("Format of reference table is suspect and likely to lead to a later error;\n"),
+        cli::style_underline("   trying to convert the table to a matrix led to the error\n   "),
+        cli::style_inverse(condmess),
+        cli::style_underline("\n    It may be worth checking the simulation program and simulation arguments.")
       ),
       immediate. = TRUE)
     }

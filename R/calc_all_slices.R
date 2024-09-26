@@ -1,8 +1,5 @@
 .calc_all_slices <- function(object,fittedPars,color.palette,plot.axes=NULL) {
-  if (is.null(color.palette)) {
-    ##               function(v) {spaMM.colors(v, redshift = 1/2)}
-    color.palette <- function(n){adjustcolor(.viridisOpts(n,bias=2),offset = c(0.5, 0.5, 0.3, 0))}
-  }
+  if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridis")
   np <- length(fittedPars)
   intsqrt <- floor(sqrt(np))
   if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}
@@ -17,6 +14,10 @@
   grillelist <- list()
   grid_args <- list(gridsteps=40)
   grid_args$margefrac <- 1/(4*grid_args$gridsteps) ## just enough to see the maximum on the edge
+  npairs <- np*(np-1L)/2L
+  slices <- vector("list",npairs)
+  slices_names <- character(npairs)
+  slice_it <- 0L
   for (it in seq_len(np-1)) {
     xvar <- fittedPars[it]
     grid_args$values <- object$logLs[,xvar]
@@ -33,7 +34,7 @@
       grille <- expand.grid(grillelist) 
       grille <- cbind(grille,t(fixedVals))
       grille <- grille[,fittedPars] ## simply reorder grille elements according to fittedNames order
-      z <- predict(object, grille, which="safe")
+      z <- predict(object, grille, which="safe", constr_tuning=Inf)
       xyz <- as.surface(grillelist, z, order.variables = "xy")
       main <- paste("logL slice for",paste(fixedPars,signif(fixedVals,4),sep="=",collapse=", "))
       varVals <- object$MSL$MSLE[c(xvar,yvar)]
@@ -45,12 +46,16 @@
           points(varVals[xyz$xlab],varVals[xyz$ylab],pch="+",cex=1.5) # locate the maximum
         }) 
       }
-      spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main=main,
-                           color.palette=color.palette,
-                           nlevels=50,
-                           plot.axes=eval(plot.axes)
+      slice_it <- slice_it+1L
+      slices[[slice_it]] <- spaMM.filled.contour(xyz$x, xyz$y, xyz$z,xlab=xyz$xlab,ylab=xyz$ylab,main=main,
+                                         color.palette=color.palette,
+                                         nlevels=50,
+                                         plot.axes=eval(plot.axes)
       )
+      slices_names[slice_it] <- paste0(xvar,"_",yvar)
     } 
   }
   if ( ! rstudioMess) par(opar)
+  names(slices) <- slices_names
+  invisible(slices)
 }

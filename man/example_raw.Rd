@@ -17,7 +17,7 @@ myrnorm <- function(mu,s2,sample.size) {
  return(c(mean=mean(s),var=var(s)))
 } # simulate means and variances of normal samples of size 'sample.size'
 #
-## pseudo-sample:  
+## simulated data:  
 set.seed(123)
 Sobs <- myrnorm(mu=4,s2=1,sample.size=40) ## stands for the actual data to be analyzed
 #
@@ -26,7 +26,7 @@ Sobs <- myrnorm(mu=4,s2=1,sample.size=40) ## stands for the actual data to be an
 if (Infusion.getOption("example_maxtime")>40) {
   parsp <- init_grid(lower=c(mu=2.8,s2=0.2,sample.size=40),
                      upper=c(mu=5.2,s2=3,sample.size=40))
-  simuls <- add_simulation(NULL,Simulate="myrnorm",par.grid=parsp)
+  simuls <- add_simulation(NULL,Simulate="myrnorm", parsTable=parsp)
   
   ## (3) infer logL(pars,stat.obs) for each simulated 'pars'
   # Relatively slow, hence saved as data 'densv'

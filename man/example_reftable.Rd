@@ -3,10 +3,10 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Workflow for method with reference table}
 \description{
-Examples of workflow with a reference table produced by \code{add_reftable}, possibly faster in many applications than the originally described method.
+Examples of workflow with a reference table produced by \code{add_reftable}, to be preferred the primitive method described in the first publication of \pkg{Infusion}.
 }
 \examples{
-if (Infusion.getOption("example_maxtime")>46) {
+if (Infusion.getOption("example_maxtime")>56) {
 
   ## Normal(mu,sd) model, with inefficient raw summary statistics:
   ## To illustrate that case we transform normal random deviates rnorm(,mu,sd)
@@ -18,15 +18,15 @@ if (Infusion.getOption("example_maxtime")>46) {
     return(c(mean=mean(s),var=var(s)))
   }
   
-  ## pseudo-sample which stands for the actual data to be analyzed:  
+  ## simulated data which stands for the actual data to be analyzed:  
   set.seed(123)
   dSobs <- blurred(mu=4,s2=1,sample.size=40)
   
-  ## Construct reference table:
-  parsp_j <- data.frame(mu=runif(600L,min=2.8,max=5.2),
-                        s2=runif(600L,min=0.4,max=2.4),sample.size=40)
-  dsimuls <- add_reftable(,Simulate="blurred",par.grid=parsp_j,verbose=FALSE)
-  
+  ## Construct initial reference table:
+  parsp_j <- init_reftable(lower=c(mu=2.5, s2=0.25, sample.size=40), 
+                           upper=c(mu=5.2, s2=2.4, sample.size=40))
+  dsimuls <- add_reftable(,Simulate="blurred", parsTable=parsp_j,verbose=FALSE)
+
   #- When no 'Simulate' function is provided, 
   #- but only a data.frame 'toydf' of simulations,
   #- a formal reference table can be produced by  
@@ -51,14 +51,20 @@ if (Infusion.getOption("example_maxtime")>46) {
   slik_j <- MSL(slik_j)
   
   # Convenience function for plotting projections...
-  plot_proj(slik_j, parm="mu", proj="MEAN")
+  plot_proj(slik_j)
+  plot_importance(slik_j, parm="mu")
   
   # ... and for computing likelihoods for new parameters and/or data:
   summLik(slik_j, parm=slik_j$MSL$MSLE+0.1)
   
   ## refine estimates iteratively
-  slik_j <- refine(slik_j,maxit=5, update_projectors=TRUE)
-  
+  maxrefines <- 2L
+  # See get_workflow_design() for a suggested number of refine() calls, 
+  # typically more than the 2 refine calls shown in this small example.
+  for(it in 1:maxrefines) slik_j <- 
+    refine(slik_j, eval_RMSEs=it==maxrefines, CIs=it==maxrefines)
+  ##
+
   if (Infusion.getOption("example_maxtime")>99) { # Post-fit procedures,
     #                                   all with distinct documentation: 
   
@@ -74,10 +80,14 @@ if (Infusion.getOption("example_maxtime")>46) {
     
     goftest(slik_j) # goodness of fit test
     
-    # Low-level predict() method (rarely directly used, otherwise see its documentation!)
-    predict(slik_j, newdata = slik_j$MSL$MSLE)         # the 'data' are here parameters!
+    # Low-level predict() method (rarely directly used, but documented)
+    predict(slik_j, newdata = slik_j$MSL$MSLE)   # the 'data' are here parameters!
 
-    
+    # 'ranger' projections can take a lot of memory. One can reduce them by... 
+    # deforest_projectors(slik_j)
+    # ...before...
+    # save(slik_j, file="slik_j")
+    # They will be rebuilt on the fly if needed for further iterations.
   }
 }
 }

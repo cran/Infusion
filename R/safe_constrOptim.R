@@ -1,81 +1,66 @@
-.safe_constrOptim <- function (theta, f, 
-                               grad=NULL, # currently not used
-                               ui, ci, mu = 1e-04, 
-                               outer.iterations = 100, 
-                               lower=NULL,upper=NULL,
-                               outer.eps = 1e-05, ...) 
-{
-  fbar <- function(theta, gi.old, ...) {
-    ui.theta <- ui %*% theta
-    gi <- ui.theta - ci
-    if (any(gi < 0)) return(NaN)
-    #gi.old <- ui %*% theta.old - ci
-    bar <- sum(gi.old * log(gi) - ui.theta)
-    if (!is.finite(bar)) bar <- -Inf # then (if mu>0) return value is +Inf. optim handled this, nloptr seems to, 
-                                     # but bobyqa first points are at boundsand it mis-performs in that case
-    totCounts <<- totCounts+1L
-    f(theta, ...) - mu * bar
+.constrOptim <- function(init, objfn, lower, upper, object, neg_ineq_constrfn, template, 
+                         eq_constrfn, ...) { 
+  if ("template" %in% names(formals(objfn))) {  # profile
+    optr <- nloptr(x0=init, eval_f=objfn, eval_g_ineq = neg_ineq_constrfn,
+                   eval_g_eq=eq_constrfn,
+                   lb=lower,
+                   ub=upper, 
+                   template=template,
+                   opts=list("algorithm"="NLOPT_LN_AUGLAG",
+                             xtol_rel=1.0e-8,
+                             local_opts=list(algorithm="NLOPT_LN_BOBYQA",
+                                             xtol_rel=1.0e-8))
+    )
+  } else { # global max. The init must be a safe one that satisfy constraints
+    optr <- nloptr(x0=init, eval_f=objfn, eval_g_ineq = neg_ineq_constrfn,
+                   eval_g_eq=eq_constrfn,
+                   lb=lower,
+                   ub=upper, 
+                   opts=list("algorithm"="NLOPT_LN_AUGLAG",
+                             xtol_rel=1.0e-8,
+                             local_opts=list(algorithm="NLOPT_LN_BOBYQA",
+                                             xtol_rel=1.0e-8))
+    )
   }
-  # dR <- function(theta, gi.old, ...) {
-  #   ui.theta <- ui %*% theta
-  #   gi <- drop(ui.theta - ci)
-  #   #gi.old <- drop(ui %*% theta.old - ci)
-  #   dbar <- colSums(ui * gi.old/gi - ui)
-  #   grad(theta, ...) - mu * dbar
-  # }
-  if (any(ui %*% theta - ci <= 0)) 
-    stop("initial value is not in the interior of the feasible region")
-  totCounts <- 1L
-  obj <- f(theta, ...)
-  r <- fbar(theta, gi.old=drop(ui %*% theta - ci), ...)
-  fbar_obj <- function(theta) fbar(theta, gi.old, ...) # removed the ... from 'fun' args  bc not working with nloptr -> .checkfunargs()
-  s.mu <- sign(mu)
-  if (is.null(lower)) lower <- rep(1,length(theta))*-Inf
-  if (is.null(upper)) upper <- rep(1,length(theta))*Inf
-  for (i in seq_len(outer.iterations)) {
-    obj.old <- obj
-    r.old <- r
-    #theta.old <- theta
-    gi.old <- drop(ui %*% theta - ci)
-    optr <- .safe_opt(init=theta, fbar_obj, lower=lower, upper=upper, verbose=FALSE, LowUp=list(), ...) 
-    r <- optr$objective
-    if (is.finite(r) && is.finite(r.old) && abs(r - r.old) < (0.001 + abs(r)) * outer.eps) 
-      break
-    theta <- optr$solution
-    obj <- f(theta, ...)
-    if (s.mu * obj > s.mu * obj.old) {
-      if (obj > obj.old)  optr <- optr_old # .safe_opt() result worse than initial value: can occur by bobyqa() with fbar_obj() infinite at boundaries
-      break
-    }
-    optr_old <- optr
-  }
-  resu <- list(optr=optr, outer.iterations=i, objective=f(optr$solution, ...), solution=optr$solution, 
-               counts=c(totCounts+1L,0L) # consistent with optim() result.
-               )
-  resu$barrier.value <- optr$objective - resu$objective
-  if (i == outer.iterations) {
-    resu$convergence <- 7
-    resu$message <- gettext("Barrier algorithm ran out of iterations and did not converge")
-  }
-  resu
+  names(optr$solution) <- names(init)
+  optr
 }
 
-if (FALSE) {
-  # from help("constrOptim")
-  fr <- function(x) {   ## Rosenbrock Banana function
-    x1 <- x[1]
-    x2 <- x[2]
-    100 * (x2 - x1 * x1)^2 + (1 - x1)^2
-  }
-  grr <- function(x) { ## Gradient of 'fr'
-    x1 <- x[1]
-    x2 <- x[2]
-    c(-400 * x1 * (x2 - x1 * x1) - 2 * (1 - x1),
-      200 *      (x2 - x1 * x1))
-  }
-  
-  #Box-constraint, optimum on the boundary
-  constrOptim(c(-1.2,0.9), fr, grr, ui = rbind(c(-1,0), c(0,-1)), ci = c(-1,-1))
-  Infusion:::.safe_constrOptim(c(-1.2,0.9), fr, ui = rbind(c(-1,0), c(0,-1)), ci = c(-1,-1), lower=c(-2,-2),upper=c(1,1))
+
+# A public interface for .safe_optim is profile.SLik()
+.safe_optim <- function (init, objfn, lower, upper, template=NULL, neg_ineq_constrfn=NULL, 
+                         eq_constrfn=NULL, ..., 
+                         object) { 
+  # special handling of template argument bc nloptr in passing all \dots it receives to the objective function,
+  # so none may be 'ignored' (unless that function itself has \dots, but then its even worse: nloptr finds that 
+  # "eval_f requires argument '...' but this has not been passed to the 'nloptr' function.")
+  if (is.null(neg_ineq_constrfn) && is.null(eq_constrfn)) { 
+    if (is.null(template)) {
+      .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, ...)
+    } else .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, template=template, ...)
+  } else {
+    if (is.character(init)) { # no init point was found satisfying constraints
+      return(list(info=init, objective=Inf)) # ie logL=-Inf
+    } else if (is.null(template)) {
+      .constrOptim(init=init, objfn=objfn, lower=lower, upper=upper, 
+                   object=object, neg_ineq_constrfn=neg_ineq_constrfn, 
+                   eq_constrfn=eq_constrfn, ...)
+    } else .constrOptim(init=init, objfn=objfn, lower=lower, upper=upper, 
+                              template=template, object=object, neg_ineq_constrfn=neg_ineq_constrfn,
+                        eq_constrfn=eq_constrfn, ...)
+  } 
 }
 
+
+## Problem that this fn aims to solve: 
+## an MSLE optimization result may be beyond the bounds by O(flop error).
+## If we recycle this MSLE to init a later optimization, an error may result. Hence
+.sanitize_optim_solution <- function(sol, lower, upper) {
+  safelow <- lower[names(sol)]+1e-15
+  risky <- (sol < safelow)
+  sol[risky] <- safelow[risky]
+  safeup <- upper[names(sol)]-1e-15
+  risky <- (sol > safeup)
+  sol[risky] <- safeup[risky]
+  sol
+}

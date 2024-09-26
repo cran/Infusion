@@ -1,27 +1,46 @@
 exportPattern("^[[:alpha:]]+")
-importFrom("blackbox", "prepareData", "calcGCV", "blackbox.options", "isPointInCHull", "subHullWrapper",
-           "resetCHull", "blackbox.getOption", "as.surface", "init_grid", "volTriangulationWrapper", 
-           "locatePointinvT","volTriangulation","rvolTriangulation", "subsimplices.volTriangulation","rsimplex")
-importFrom("graphics", "abline", "axis", "curve", "filled.contour", "lines", "par", "plot", "points", "plot.new", "text", "title")
+# export(".update_projector.SLik_j", ".update_projector.default") # methods of internal generics must be exported...
+importFrom("blackbox", 
+           # 'current:
+           "as.surface", # called by for plot functions so presumably required irrespective of workflow.
+           "init_grid", # called by init_reftable() 
+           # next 4 for GCV, so theoretically not only primitive workflow:
+           "prepareData", "calcGCV", "blackbox.options", "blackbox.getOption", 
+           # All further ones only for primitive workflow: 
+           "resetCHull", # (up to date workflow uses convhulln instead of resetCHull)
+           "locatePointinvT", "volTriangulationWrapper", "isPointInCHull", "subHullWrapper",   
+           "volTriangulation", "rvolTriangulation", "subsimplices.volTriangulation","rsimplex")
+importFrom("graphics", "abline", "axis", "curve", "filled.contour", "lines", "par", "plot", "points", "plot.new", "text", "title",
+           "dotchart")
+importFrom("geometry", "convhulln")
 importFrom("grDevices", "adjustcolor")
 importFrom("methods", "slot", "new")
-importFrom("mvtnorm", "dmvnorm", "rmvnorm")
+importFrom("mvtnorm", "dmvnorm", "rmvnorm", "rmvt")
 importFrom("ranger", "ranger", "importance")
 importFrom("numDeriv", "grad", "hessian", "jacobian")
 importFrom("pbapply", "pblapply", "pboptions", "pbreplicate", "pbsapply")
 importFrom("proxy", "dist")
 #importFrom("Rmixmod", "mixmodCluster", "mixmodStrategy", "mixmodGaussianModel", "plotCluster")
-importFrom("spaMM", "corrHLfit", "MaternCorr", "mapMM", "fitme", "spaMM.colors", "fixef", "filled.mapMM", 
-           "spaMM.filled.contour", "HLCor", "HLfit", "spaMMplot2D", "get_residVar", "combinepar") ## doc'ed fns
-importFrom("spaMM", "get_ranPars", "spaMM.getOption") 
-importFrom("spaMM", "makeTicks", ".safe_opt", ".setCluster") ## undoc fns
+importFrom("spaMM", "fitme", 
+                    "spaMM.colors", # still used for dot plots
+                    "fixef", # some non-essential uses
+                    "mapMM", # old workflow...
+                    "filled.mapMM", # plot.Slik() (vs : plot.SLik_j() use .filled.contour.plot() -> spaMM.filled.contour ) 
+                    "spaMM.filled.contour", # several uses incl. plot.SLik_j()
+                    "spaMMplot2D", # in plot.SLik_j()
+                    "combinepar", # for 2D profiles. Its the main way this function is used anywhere.
+                    "regularize", # used
+                    "get_ranPars" # several non-essential roles
+           ) ## doc'ed fns
+importFrom("spaMM", "makeTicks", ".safe_opt") ## undoc fns
 importFrom("stats", "deviance", "glm", "var", "as.formula", "cov", "dnorm", "fitted", "optim", "pchisq", "pnorm", "quantile",
            "predict", "qchisq", "runif", "uniroot", "binomial", "poisson", "constrOptim", "dchisq", "profile", "confint", "rnorm", 
            "Gamma", "pgamma", ## for the optional gamma-based LRT correcction, so might be removed later
-           "na.omit", "model.frame")
+           "na.omit", "model.frame", "setNames", "nlminb","median", "qnorm", "ecdf", "simulate")
 importFrom("utils", "packageVersion", "setTxtProgressBar", "txtProgressBar", "packageDescription", "getS3method", "capture.output", 
-           "head", "combn")
-importFrom("viridis", "viridis")
+           "head", "combn","tail", "str")
+importFrom("boot", "boot.ci")
+importFrom("nloptr", "nloptr")
 #importFrom("mclust", "Mclust", "densityMclust", "mclustBIC", "sim") ## mclustBIC bc Mclust() -> as.name("mclustBIC") but many more pop up...
 export(mapMM) ## from spaMM
 export(resetCHull,isPointInCHull) ## from blackbox
@@ -36,6 +55,8 @@ S3method(summary, SLik)
 S3method(summary, SLik_j)
 S3method(print, logLs)
 S3method(summary, logLs)
+S3method(print, goftest)
+S3method(summary, goftest)
 S3method(plot, SLikp)
 S3method(plot, SLik_j)
 S3method(plot,MixmodResults)
@@ -56,12 +77,15 @@ S3method(predict,dMclust)
 # S3method(predict,gllim)
 S3method(project,default)
 S3method(project,character)
+#S3method(.update_projector,SLik_j)
+#S3method(.update_projector,default)
 S3method(refine,SLik)
 S3method(refine,SLik_j)
 S3method(refine,SLikp)
 S3method(refine,default)
 S3method(summLik,SLik_j)
 S3method(summLik,default)
+S3method(simulate, SLik_j)
 S3method(infer_surface,logLs)
 S3method(infer_surface,tailp)
 S3method(calc.lrthreshold,SLik)
@@ -71,3 +95,4 @@ S3method(get_from, SLik)
 S3method(get_from, SLik_j)
 S3method(get_from, default)
 S3method("[", reftable)
+S3method(str, MAF)

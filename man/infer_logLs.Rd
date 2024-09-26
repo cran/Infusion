@@ -9,6 +9,8 @@
 Infer log Likelihoods using simulated distributions of summary statistics
 }
 \description{
+  The functions described here are either experimental or relevant only for the primitive workflow.
+  
   For each simulated distribution of summary statistics, \code{infer_logLs} infers a probability density function, and the density of the observed values of the summary statistics is deduced. By default, inference of each density is performed by \code{infer_logL_by_Rmixmod}, which fits a distribution of summary statistics using procedures from the \code{Rmixmod} package.        
 }
 \usage{
@@ -45,7 +47,7 @@ infer_logL_by_Hlscv.diag(EDF,stat.obs,logLname,verbose)
   Names of \dQuote{positives} and \dQuote{negatives} in the binomial response for the inference of tail probabilities. 
 }
   \item{refDensity}{
-  An object representing a reference density (such as an \code{\link{HLfit}} fit object or other objects with a similar \code{predict} method) which, together with the density inferred from each empirical density, defines a likelihood ratio used to define a rejection region.   
+  An object representing a reference density (such as an \pkg{spaMM} fit object or other objects with a similar \code{predict} method) which, together with the density inferred from each empirical density, defines a likelihood ratio used to define a rejection region.   
 }
   \item{verbose}{ A list as shown by the default, or simply a vector of booleans, indicating respectively
   whether to display (1) some information about progress; (2) a final summary of the results after all elements of \code{simuls} have been processed. If a count of 'outlier'(s) is reported, this typically means that \code{stat.obs} is not within the envelope of a simulated distribution (or whatever other meaning the user attaches to an \code{FALSE isValid} code: see Details)
@@ -53,7 +55,7 @@ infer_logL_by_Hlscv.diag(EDF,stat.obs,logLname,verbose)
   \item{method}{
   A function for density estimation. See Description for the default behaviour and Details for the constraints on input and output of the function. 
 }
-  \item{nb_cores}{Number of cores for parallel computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
+  \item{nb_cores}{Number of cores for parallel computation. The default is \code{Infusion.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
  \item{cluster_args}{A list of arguments, passed to \code{\link[parallel]{makeCluster}}. May contain a non-null \code{spec} element, in which case the distinct \code{nb_cores} argument is ignored.}
   \item{packages}{For parallel evaluation: Names of additional libraries to be loaded on the cores, necessary for evaluation of a user-defined 'method'.}
   

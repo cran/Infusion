@@ -1,19 +1,38 @@
-.viridisOpts <- function (n, alpha = 1, begin = 0, end = 1, option = "D",...) 
-{
+.viridisOpts <- function (n, alpha = 1, begin = 0, end = 1, option = "D",...) {
   if (begin < 0 | end < 0 | begin > 1 | end > 1) {
     stop("begin and end must be in [0,1]")
   }
-  option <- switch(option, A = "A", magma = "A", B = "B", inferno = "B", 
-                   C = "C", plasma = "C", D = "D", viridis = "D", {
-                     warning(paste0("Option '", option, "' does not exist. Defaulting to 'viridis'."))
-                     "D"
-                   })
-  map <- viridis::viridis.map[viridis::viridis.map$opt == option, ]
+  option <- switch(option, # convert to viridis.map option syntax 
+                   magma = "A", inferno = "B", plasma = "C", viridis = "D", 
+                   cividis= "E", rocket = "F", mako = "G", turbo = "H", 
+                   option)
+  if ( ! length(grep("^[A-H]$", option)))  {
+    warning(paste0("Option '", option, "' does not exist. Defaulting to 'viridis'."))
+    option <- "D"
+  }
+  map <- viridisLite::viridis.map[viridisLite::viridis.map$opt == option, ]
   map_cols <- grDevices::rgb(map$R, map$G, map$B)
   fn_cols <- grDevices::colorRamp(map_cols, space = "Lab", 
                                   interpolate = "spline",...)
   cols <- fn_cols(seq(begin, end, length.out = n))/255
   grDevices::rgb(cols[, 1], cols[, 2], cols[, 3], alpha = alpha)
+}
+
+.Inf_palette <- function(variant) {
+  switch(
+    variant,
+    "viridis" = function(n) grDevices::hcl.colors(n=n, palette="viridis",alpha=1/2), 
+    ##                     a bit nicer than  viridisLite::viridis(n, alpha=1/2)
+    ## I previously used further adjustements, but these are not so nice:
+    # "viridis" = function(n){adjustcolor(.viridisOpts(n=n, option="D",bias=2),
+    #                                     offset = c(0.5, 0.5, 0.3, 0))},
+    ## "turbo" replace "spaMM_shift3" for filled plots, but "spaMM_shift3" still used for scatter plots 
+    "turbo" = function(n){ adjustcolor(.viridisOpts(n=n, option="H", begin=0.1)) },
+    ##  spaMM.colors is distantly related to turbo but flashy. The redshift contracts the blue range.
+    "spaMM_shift3" = function(n=50L) spaMM.colors(n=n, redshift=3), # still used for dot plots
+    "spaMM_shift1/2" = function(n=50L) spaMM.colors(n=n, redshift=1/2), # not used
+    stop(".Inf_palette() 'variant' not handled")
+  )
 }
 
 .gridfn <- function(values, gridsteps=40, margefrac=NULL) {
@@ -80,9 +99,7 @@ plot.SLik <-function(x,y,filled=FALSE,
             # this is evaluated at the end of spaMM::filled.mapMM
             contour(x=xGrid,y=yGrid,z=Zvalues,add=TRUE, nlevels=1, levels=c(0.05))})
         }
-        if (is.null(color.palette)) {
-          color.palette <- function(n){adjustcolor(.viridisOpts(n,bias=2),offset = c(0.5, 0.5, 0.3, 0))}
-        }
+        if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridis")
         decosf <- substitute({x;y},list(x=quote(points(object$logLs[,fittedPars],cex=0.8)),
                                         y=decos)) ## joins language objects
         filled.mapMM(object$fit,Ztransf=Ztransf,
@@ -106,13 +123,13 @@ plot.SLik <-function(x,y,filled=FALSE,
           # this is evaluated in spaMMplot2D where no grid of z values is available for contour
         }
         if (is.null(color.palette)) {
-          color.palette <- function(n){spaMM.colors(n,redshift=3)}
+          color.palette <- .Inf_palette(variant="spaMM_shift3")
         }
         mapMM(object$fit,Ztransf=Ztransf,
               color.palette=color.palette,nlevels=50,
               plot.axes=plot.axes, ## appears to accept eval(.) too 
               plot.title=plot.title, ## appears to accept eval(.) too but best not (cf contours)
-              decorations=decos,
+              decorations=eval(decos), ## eval before an inner 'eval' is called, as above...
               ...)
       }
     } 

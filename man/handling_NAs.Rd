@@ -6,7 +6,8 @@
 Discrete probability masses and NA/NaN/Inf in distributions of summary statistics.
 }
 \description{
-This explains the use of the \code{boundaries} attribute of observed statistics to handle (1) values of the summary statistics that can occur with some probability mass; (2) special values (NA/NaN/Inf) in distributions of summary statistics. This further explains why \code{Infusion} handles special values by removing affected distributions unless the \code{boundaries} attribute is used.   
+This section was written for the primitive workflow and may be largely irrelevant for the up-to-date one. 
+It explains the use of the \code{boundaries} attribute of observed statistics to handle (1) values of the summary statistics that can occur with some probability mass; (2) special values (NA/NaN/Inf) in distributions of summary statistics. This further explains why \code{Infusion} handles special values by removing affected distributions unless the \code{boundaries} attribute is used.   
 }
 \details{
   Special values may be encountered in an analysis. For example, trying to estimate a regression coefficient when the predictor variable is constant may return a NaN. Since functions such as \code{refine} automatically add simulated distributions, this problem must be automatically handled by the user's simulation function or by the package functions, rather than by user's tinkering with the Infusion procedures.   

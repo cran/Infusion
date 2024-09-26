@@ -8,6 +8,8 @@
   Infer a (summary) likelihood or tail probability surface from inferred likelihoods
 }
 \description{
+ These functions are either for the primitive workflow or experimental. For standard use of \pkg{Infusion} see instead the functions used in the up-to-date workflow (\code{\link{example_reftable}})
+
   The \code{logLs} method uses a standard smoothing method (prediction under linear mixed models, a.k.a. Kriging) to infer a likelihood surface, using as input likelihood values themselves inferred with some error for different parameter values. The \code{tailp} method use a similar approach for smoothing binomial response data, using the algorithms implemented in the spaMM package for fitting GLMMs with autocorrelated random effects.
 }
 \usage{
@@ -26,7 +28,7 @@
   Whether to display some information about progress or not.
 }
 \item{allFix}{
-  Fixed values in the estimation of smoothing parameters. For development purposes, not for routine use. For \code{infer_surface.logLs}, this should typically include values of all parameters fitted by \code{spaMM::corrHLfit} (\eqn{\rho,\nu,\phi,\lambda}, and \code{$etaFix=}\eqn{\beta}).
+  Fixed values in the estimation of smoothing parameters. For development purposes, not for routine use. For \code{infer_surface.logLs}, this should typically include values of all parameters fitted by \code{\link[spaMM]{fitme}} (\eqn{\rho,\nu,\phi,\lambda}, and \code{$etaFix=}\eqn{\beta}).
 }
 %\item{stat.obs}{
 %  Observed value of summary statistics
@@ -39,7 +41,7 @@ further arguments passed to or from other methods (currently not used).
 }
 }
 \value{
-  An object of class \code{SLik} or \code{SLikp}, which is a list including an \code{HLfit} object as returned by \code{\link{corrHLfit}}, and additional members not documented here.
+  An object of class \code{SLik} or \code{SLikp}, which is a list including the fit object returned by \code{\link[spaMM]{fitme}}, and additional members not documented here.
 }
 \examples{
 ## see main documentation page for the package

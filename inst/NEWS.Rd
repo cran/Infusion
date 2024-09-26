@@ -3,20 +3,79 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.2.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Improved procedure for sampling new parameter points (as called by refine()).
+\item New get_workflow_design() function to define default parameters of a simulation workflow and to control non-default values. The default design suggests a minimum simulation effort for reasonable performance.
+\item More appropriate default and control of the number of parameter points added over iterations by a refine() call, as controlled by the new 'ntot' argument (better than by the pre-existing 'n' argument), whose default is itself controlled by get_workflow_design(). 
+\item The default 'precision' threshold (retrieved by Infusion.getOption("precision")) has been increased from 0.1 to 0.25, following various simulation studies showing that this less stringent threshold yields the same coverage of the CIs as the more stringent one.
+\item Default number of trees in random-forest projections by the 'ranger' package is set to 1000 (rather than to the default value of that package). 
+\item Masked Autoregressive Flows can be used to infer the likelihood surface, as an alternative to multivariate Gaussian mixture models. The suggested 'mafR' package is required for that purpose. 
+\item The procedure that evaluates the contents of the 'CIobject' environment in a fit object is now documented as the allCIs() function.
+\item Modeling of latent variables is now implemented, up to computation of prediction intervals based on a predictive distribution. See help("latent").
+\item More robust procedure for 1D profiles and confidence intervals when the likelihood surface has (even small) local maxima. 
+\item Constraints on parameters (beyond the basic box constraints) are handled: see help("constr_crits").
+\item confint.SLik_j() can evaluate more types of intervals, as controlled by the new 'type' argument. 
+\item Bootstrap computations by SLRT() now not only include test results but also confidence intervals [computed by boot::boot.ci()] when applicable (i.e. for single-parameter test). 
+\item The 'summLik' extractor can now also compute profile likelihoods.
+\item New 'simulate.SLik_j' method to simulate (by default) projected summary statistics, or (non-default) call the sample simulator attached to the fit object.
+\item Extended syntax for 'projectors' argument of project.default(), allowing to copy raw summary statistics from the input to the output of this function.
+\item Default 'seq_nbCluster' and 'maxnbCluster' package options have been modified.
+\item n=0L can now be used in refine.SLik_j() to re-generate the projectors or the clustering without augmenting the reference table. The new reproject() and recluster() functions wrap such refine() calls, with different default arguments for CI and RMSE computations. 
+\item plot1Dprof() gets new arguments 'profiles' and 'add', and returns profile coordinates, to allow recycling of its computations and additional plot features. It also gets new arguments 'lower' and 'upper' for control of the x-range, 'cluster_args' for parallelisation, 'do_plot' to control whether a plot is actually produced from the computed coordinates
+\item Several changes to plot2Dprof() graphic output, including a contour level for 2D confidence region, and blanking of regions with low likelihood. This function also gets new arguments 'lower' and 'upper' for control of the parameter ranges, 'profiles' [same usage as in plot1Dprof()] and 'color.palette'.
+\item the viridisLite::turbo palette is now a default for likelihood surface plots. The 'viridis' palette used in "slice plots" is now that from grDevices::hcl.colors.
+\item plot.SLik_j() now returns (invisibly) some graphic elements of the plot, rather than the input object.
+\item Redefinition of plot_proj(), replacing the experimental first version of this function. 
+\item Better checks of the 'stat.obs' argument of infer_SLik_joint().
+\item Argument 'control.Simulate' added to refine.default() and goftest(). This facilitates e.g. running different steps of an analysis on different operating systems.
+\item projections using 'ranger' now calls it with argument 'importance' set by default to "permutation" for the initial projections and to "none" for the projections performed during refine() steps. 
+\item New functions reparam_reftable() and reparam_fit() to facilitate inferences using alternative parametrizations of the same model.
+\item New function plot_importance() for the importance metric of a 'ranger' object.
+\item New argument 'RMSE_n' in MSL() allows more convenient control of the RMSE computation.
+\item New defaults and extended functionalities of refine()'s 'CIs', 'eval_RMSEs' and 'update_projectors' arguments, allowing more control over several iterations.
+\item Default value of add_reftable(.,maxmin) modified.
+\item The structure of 'SLik_j' objects has been modified. Element 'raw_data' has been renamed 'reftable_raw' ad a redundant copy of it elsewhere in the object has been removed.
+}
+}
+\subsection{API CHANGE}{
+\itemize{
+\item The format of the return value of profile(., return.optim=TRUE) (non-default return value) is now more formally defined, in a possibly backward-incompatible way (but this will not break any standard workflow). Further, with default return.optim=FALSE, the returned log-likelihood may additionally bear the optimization solution vector as an attribute. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item 'nloptr' is an imported package. 
+\item 'spaMM' version >= 4.4.16 now required. 
+\item 'geometry' is now a direct dependency (previously only indirect through 'blackbox' package). 
+\item 'viridis' is replaced by 'viridisLite'.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item MSL() could fail (stop) in the case of a single inferred parameter in the workflow with projection.
+\item SLRT(., h0 = <vector of more than one parameter> ) was broken.
+\item Fixed documentation for the package option 'mixmodGaussianModel': the fully unconstrained covariance model has been the default since CRAN version 1.5.1.
+\item mclust-based procedures had not been tested for a long time, hence had got one major bug and accumulated many limitations. Now all tests in the 'testthat' directory run with it.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.1.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
 \item add_reftable() allows a more extended interface for the \code{Simulate} function, which may now handle a data frame of parameter values.
 \item New default refine(., nbCluster) value, based on a more definite guess of a good value and aiming at faster analyses. 
 \item New convenient wrapper init_reftable() around the init_grid() function imported from the 'blackbox' package. Infusion now depends on versions >= 1.1.41 of that package, which include a faster init_grid() function. 
+\item plot1Dprof() handles a new plot 'type', 'type="ranges"', an improved version of 'type="zoom"'. 
 \item plot2Dprof() can use parallelisation. 
 \item plot2Dprof(., pars) syntax extended for more flexible specification of sets of profiles. 
 \item refine.default() gets new argument 'CIs' for more transparent control of CI computations. 
 \item refine.default() can now request parallel execution of ranger(), according to refine()'s 'nb_cores' argument by default, but with refine()'s 'cluster_args' argument further allowing independent control of ranger()'s 'num.threads' independently from 'nb_cores'.  
 \item project.default() gets new arguments 'use_oob' and 'is_trainset' to bypass a costly step in specific (but commonplace) cases; and also argument 'methodArgs'. 
 \item nbCluster="max" syntax allowed in some contexts for fast gaussian mixture modelling by fixing the tried number of clusters to a single value automatically generated. 
-\item The 'xLLiM' package (new 'Suggested' dependency) can be used as an alternative to 'Rmixmod' for joint density modelling, by calling infer_SLik_joint(., using="xLLiM").
-\item New convenience function write_workflow().
+\item The 'xLLiM' package (new 'Suggested' dependency) can be used as an alternative to 'Rmixmod' for joint density modelling, by calling infer_SLik_joint(., using="xLLiM") (purely experimental, with no convincing use yet).
+\item New convenience function write_workflow() (removed in more recent versions).
 }
 }
 \subsection{USER-LEVEL CHANGES}{
@@ -46,7 +105,7 @@
 \item project() accepts (barely documented) "fastai" and "keras" methods, interfacing the packages of the same name (themselves interfacing python libraries).
 \item New default values of various controls in calls to ranger::ranger.  
 \item infer_SLik_joint() and goftest() will check for linear dependencies among the summary statistics (which would cause bugs in goftest()), thanks to the new convenience function check_raw_stats().
-\item MSL() now computes the hessian of summary likelihood at its maximum, to check parameter identifiability (with limited success). This hessian is included in the return value of MSL() and then in the 'MSL' environment stored in e.g.) objects of class 'SLik_j'. 
+\item MSL() now computes the hessian of summary likelihood at its maximum, to check parameter identifiability (with limited success). This hessian is included in the return value of MSL() and then in the 'MSL' environment stored in (e.g.) objects of class 'SLik_j'. 
 \item New function focal_refine() to refine the likelihood surface for given parameter values.  
 \item The previously private function predict.SLik_j() that evaluates the likelihood for specific parameter points is now part of the API.
 \item New argument 'plot.slices' for plot.SLik_j() and plot.SLik().  

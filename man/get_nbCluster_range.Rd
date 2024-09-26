@@ -17,7 +17,7 @@ Adventurous users can change the rules used by \pkg{Infusion} by changing the gl
 seq_nbCluster(nr)
 refine_nbCluster(nr, onlymax=7)
 get_nbCluster_range(projdata, nr = nrow(projdata), nc = ncol(projdata), 
-                    nbCluster = seq_nbCluster(nr))
+                    nbCluster = seq_nbCluster(nr), verbose=TRUE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -26,6 +26,7 @@ get_nbCluster_range(projdata, nr = nrow(projdata), nc = ncol(projdata),
   \item{onlymax}{integer: see Description;}
   \item{nc}{integer: number of columns of the data to be clustered, typically \bold{twice} the number of estimated parameters;}
   \item{nbCluster}{integer or vector of integers: candidate values, which feasability is checked by the function.}
+  \item{verbose}{boolean. Whether to print some information, or not.}
 }
 \value{ An integer vector}
 \examples{

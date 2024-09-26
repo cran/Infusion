@@ -61,14 +61,14 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
   locEDF <- EDF[,stats,drop=FALSE] 
   if ("package:mclust" %in% search()) { ## don't assume it was previous attached if so olny in a child process...
      ##requireNamespace + nclust:: not enough  given calls 
-    fit <- .densityMclust(locEDF,stat.obs=stat.obs) ## handling boundary effects, != mclust::densityMclust
+    fit <- ..densityMclust(locEDF,stat.obs=stat.obs) ## handling boundary effects, != mclust::densityMclust
   } else {
     stop("'mclust' should be loaded first.")
   }
   nbClu <- dim(fit$parameters$variance$sigma)[3L]
-  solve_t_chol_sigma <- vector("list", nbClu)
-  for (it in seq_len(nbClu)) solve_t_chol_sigma[[it]] <- solve(t(chol(fit$parameters$variance$sigma[,,it])))
-  pred <- predict(fit,t(c(stat.obs)), solve_t_chol_sigma=solve_t_chol_sigma) ## pas de binFactor!
+  solve_t_chol_sigma_list <- vector("list", nbClu)
+  for (it in seq_len(nbClu)) solve_t_chol_sigma_list[[it]] <- solve(t(chol(fit$parameters$variance$sigma[,,it])))
+  pred <- predict(fit,t(c(stat.obs)), solve_t_chol_sigma_list=solve_t_chol_sigma_list) ## pas de binFactor!
   logL <- log(pred)
   if (invalid <- is.infinite(logL)) {
     #if (verbose) cat("!")
@@ -99,8 +99,8 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
       logL <- NA
     }
   } else {
-    solve_t_chol_sigma <- lapply(fit@parameters["variance"], function(mat) solve(t(chol(mat))))
-    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),solve_t_chol_sigma=solve_t_chol_sigma, 
+    solve_t_chol_sigma_list <- lapply(fit@parameters["variance"], .solve_t_cholfn)
+    logL <- predict(fit,tcstat.obs=t(c(stat.obs)),solve_t_chol_sigma_list=solve_t_chol_sigma_list, 
                     clu_means=t(fit@parameters["mean",]),
                     logproportions = log(fit@parameters@proportions), log=TRUE) ## pas de binFactor!
     if (invalid <- is.infinite(logL)) {
@@ -112,6 +112,7 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   unlist(c(attr(EDF,"par"),logL,isValid= ! invalid)) 
 }
 
+## primitive workflow
 ## when the return value of infer_logLs() is changed the densv and densb data must be recomputed
 infer_logLs <- function(object,
                         stat.obs,
@@ -131,7 +132,9 @@ infer_logLs <- function(object,
   }
   if ( ! is.null( cn <- colnames(stat.obs))) {
     message("Note: 'stat.obs' should be a numeric vector, not a matrix or data.frame. Converting...")
+    raw_data <- attr(stat.obs,"raw_data")
     stat.obs <- drop(stat.obs)
+    attr(stat.obs,"raw_data") <- drop(raw_data)
     names(stat.obs) <- cn ## minimal patch so that names() can be used, not colnames()
   }
   if (!is.list(verbose)) verbose <- as.list(verbose)

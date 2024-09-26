@@ -4,21 +4,39 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
     pkg   <- "Infusion"
     require(pkg, character.only=TRUE, quietly=TRUE)
     if (interactive())  {
-      #options(error=recover)
-      while (dev.cur()>1L) dev.off()
-      oldask <- devAskNewPage(ask=FALSE)
-      if (FALSE) {
-        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
-      } else {
-        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),full.names = TRUE)
-        testfiles <- testfiles[grep("*.R$",testfiles)]
+      { ## block of standard tests
+        # options(error=recover)
+        while (dev.cur()>1L) dev.off()
+        oldask <- devAskNewPage(ask=FALSE)
+        if (FALSE) {
+          testfiles <- dir(paste0(Infusion::projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
+        } else {
+          testfiles <- dir(paste0(Infusion::projpath(),"/package/tests/testthat/"),full.names = TRUE)
+          testfiles <- testfiles[grep("*.R$",testfiles)]
+        }
+        oldmaxt <- Infusion.options(example_maxtime=100, ## won't test much otherwise
+                                    nb_cores=NULL) # enforce default nb_cores
+        timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
+        Infusion.options(oldmaxt)
+        print(colSums(timings))
+        devAskNewPage(oldask) ## fixme: pb if dev.new has been called in-between 
       }
-      oldmaxt <- Infusion.options(example_maxtime=100) ## won't test much otherwise
-      timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
-      Infusion.options(oldmaxt)
-      print(colSums(timings))
-      devAskNewPage(oldask) ## fixme: pb if dev.new has been called in-between 
-      #
+      if (FALSE) { ## tests not included in package (using unpublished data, etc.)
+        if (TRUE) { # see above comment about Rstudio
+          priv_testfiles <- dir(paste0(spaMM::projpath(),"/package/tests_private/"),pattern="*.R$",full.names = TRUE)
+        } else {
+          priv_testfiles <- dir(paste0(spaMM::projpath(),"/package/tests_private/"),full.names = TRUE)
+          priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
+        }
+        priv_timings <- t(sapply(priv_testfiles, function(fich){
+          cat(cli::col_green(paste0("\n",fich)))
+          gc()
+          tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
+          if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
+          tps
+        }))
+        print(colSums(priv_timings)) # very roughly 1205.44 s elapsed for default maxtime (0.7) # much less after improving COMP
+      }
       if (FALSE) { # slow and using several packages external to Infusion (but faster if one keeps the cache...)
         source(paste0(projpath(),"/../vignette/knitr.R"))
       }

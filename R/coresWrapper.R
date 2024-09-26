@@ -1,12 +1,14 @@
+# if bool = TRUE, returns test whether in Rstudio session
+# if bool = FALSE  (useful only for devel), returns path of project, or NULL, or a try-error
 .inRstudio <- function(silent=FALSE, bool=TRUE) {
-  trygetfn <- try(get("getActiveProject",envir = asNamespace("rstudioapi")), silent=silent) # fails if rstudioapi not installed
-  if ( tryres <- ( ! inherits(trygetfn,"try-error"))) {
-    tryres <- try(trygetfn(), silent=silent) # fails if rstudioapi not running ie not an Rstudio session
-    # otherwise NULL if no active project, or the path if there is an active project.
-  }
-  if (bool) tryres <- ! inherits(tryres,"try-error") # to return a boolean : whether we are in an Rstudio session or not
-  # otherwise retuen value is (try-error, or NULL, or path).
-  tryres 
+  tryres <- exists("RStudio.Version", envir = globalenv()) # from rstudioapi:::callLauncherFun 
+  if (tryres && ! bool) { # we're in Rstudio
+    trygetfn <- try(get("getActiveProject",envir = asNamespace("rstudioapi")), silent=silent) # fails if rstudioapi not installed
+    if ( tryres <- ( ! inherits(trygetfn,"try-error"))) {
+      tryres <- try(trygetfn(), silent=silent) # NULL if no active project, or the path if there is an active project.
+    }
+    tryres 
+  } else tryres
 }
 
 projpath <- local({
@@ -31,41 +33,36 @@ projpath <- local({
 })
 
 
-.check_nb_cores <- local({
-  nb_cores_warned <- FALSE
-  cores_avail_warned <- FALSE
-  parallel_Rstudio_warned <- FALSE
-  function(nb_cores=NULL) {
+.check_nb_cores <- function(nb_cores=NULL) {
     if (is.null(nb_cores)) nb_cores <- Infusion.getOption("nb_cores") ## may be NULL
     machine_cores <- parallel::detectCores()
     if (is.null(nb_cores)) {
       nb_cores <- 1L ## default
       if (machine_cores>1L && interactive()) {
-        if (! cores_avail_warned) {
+        if (! .one_time_warnings$cores_avail_warned) {
           message(paste(machine_cores,"cores are available for parallel computation\n(you may be allowed to fewer of them on a shared cluster).\n"))
-          message("Change 'nb_cores' argument to use some of them.\nUse Infusion.options(nb_cores=<n>) to control nb_cores globally.")
-          cores_avail_warned <<- TRUE
+          message("Change 'nb_cores' or 'cluster_args' argument to use some of them.\nUse Infusion.options(nb_cores=<n>) to control nb_cores globally.")
+          .one_time_warnings$cores_avail_warned <- TRUE
         }
       }
     } else {
-      if (nb_cores>1L && .inRstudio(silent=TRUE,bool = TRUE) && ! parallel_Rstudio_warned) {
-        warning("Parallel tasks have failed in some past versions of Rstudio... good luck!", immediate. = TRUE)
-        parallel_Rstudio_warned <<- TRUE
-      }
+      # if (nb_cores>1L && .inRstudio(silent=TRUE,bool = TRUE) && ! parallel_Rstudio_warned) {
+      #   warning("Parallel tasks have failed in some past versions of Rstudio... good luck!", immediate. = TRUE)
+      #   parallel_Rstudio_warned <<- TRUE
+      # }
       if (nb_cores>machine_cores) {
-        if (! nb_cores_warned) {
+        if (! .one_time_warnings$nb_cores_warned) {
           warning("More cores were requested than found by parallel::detectCores(). Check Infusion.getOption(\"nb_cores\") argument.
                 Number of availlable cores automatically downsized to the number of cores found by parallel::detectCores(). I continue.")
-          nb_cores_warned <<- TRUE
+          .one_time_warnings$nb_cores_warned <- TRUE
         }
         nb_cores <- machine_cores
       }
     }
     return(nb_cores)
   }
-})
 
-.set_cluster_type <- function(cluster_args, nb_cores) {
+.set_cluster_type <- function(cluster_args=NULL, nb_cores=NULL, ...) {
   if (is.null(cluster_args$spec)) cluster_args$spec <- nb_cores # else... => which means that non-null cluster_args$spec overrides nb_cores
   cluster_args$spec <- .check_nb_cores(nb_cores=cluster_args$spec)
   if (cluster_args$spec>1L) {
@@ -91,10 +88,25 @@ projpath <- local({
   cluster_args
 }
   
+# aims to reduce the size of object for parallel bootstrap
+## $logLs still needed for .safe_init()
+
+..shrink <- function(fitobject) {
+  fitobject$reftable_raw <- NULL
+  fitobject$projectors <- NULL
+  if (inherits(fitobject$jointdens,"dMimod")) fitobject$jointdens@proba <- NA_real_
+  fitobject
+}
+
+.shrink <- function(fitobject, ...) { # may be searched as .strip....
+  cluster_args <- .set_cluster_type(...) # Infusion:::.set_cluster_type here
+  if (cluster_args$spec>1L) fitobject <- ..shrink(fitobject = fitobject)
+  fitobject
+}
+
+
   
-.init_cores <- local({
-  doSNOW_warned <- FALSE
-  function(cluster_args=list()) { 
+.init_cores <- function(cluster_args=list()) { 
     cluster_args$spec <- .check_nb_cores(nb_cores=cluster_args$spec) # if cluster_args was NULL it is converted to list here => no need for special handling code.
     cores_info <- list(nb_cores=cluster_args$spec)
     #
@@ -111,16 +123,15 @@ projpath <- local({
           fn <- get("registerDoSNOW", asNamespace("doSNOW"))
           do.call(fn,list(cl=cores_info$cl)) 
         } else {
-          if ( ! doSNOW_warned) {
+          if ( ! .one_time_warnings$doSNOW_warned) {
             message("If the 'doSNOW' package were attached, better load-balancing might be possible (at the expense of control of RNG).")
-            doSNOW_warned <<- TRUE
+            .one_time_warnings$doSNOW_warned <- TRUE
           } 
         }
       } else cores_info$has_doSNOW <- FALSE
     }
     return(cores_info)
   }
-})
 
 .eval_Sobs_densities <- function(method, object, cores_info, packages=NULL, stat.obs,logLname,
                                  verbose # list

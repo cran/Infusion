@@ -1,4 +1,4 @@
-## auxiliary fn for sample_volume, tiself for rparam
+## auxiliary fn for sample_volume, itself for rparam
 .sample_vertices <- function(n,tryn,vertices,object,fixed=NULL,fittedPars,useEI)  {
   if (length(fittedPars)>length(fixed)) { ## profile CIs, or 
     if (length(fixed)>0L) {
@@ -56,7 +56,7 @@
 }
 
 
-## auxiliary fn for rparam
+## auxiliary fn for rparam so for primitive workflow
 ## j'ai rajouté les bary dans la sortie. Y penser pour migraineLike
 `sample_volume` <- function(object,n=6,useEI,vertices=NULL,
                             dlr=NULL, ## NULL => calc.lrthreshold will use a dfault value
@@ -87,7 +87,7 @@
     if ( is.null(vertices)) {
       vertices <- object$fit$data[,fittedPars,drop=FALSE]
       pred <- fitted(object$fit)
-    } else pred <- predict(object,newdata=vertices, which="lik")
+    } else pred <- predict(object,newdata=vertices, which="lik", constr_tuning=FALSE)
     uppervertices <- vertices[pred>lrthreshold,,drop=FALSE]
     ## if there is only one uppervertice, sample_vertices will typically sample only one point constructed from fixed and that vertice
     ## => test to avoid that; but more general pb must be caught by the test:
@@ -151,7 +151,7 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
   largervT <- volTriangulation(rbind(pts,largerpts))
   #
   if (useCI) {
-    trypoints <- .allCIs(object,level=0.1,verbose=FALSE)$bounds ## narrow bracketing of $optr$par by level=0.1
+    trypoints <- allCIs(object,level=0.1,verbose=FALSE)$bounds ## narrow bracketing of $optr$solution by level=0.1
     if (nvec["MSL"]<NROW(trypoints)) { 
       trypoints <- trypoints[sample(nrow(trypoints),nvec["MSL"]),,drop=FALSE]
     } 
@@ -167,8 +167,8 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
   }
     # points targeting CI bounds
   if (useCI) {
-    if (is.null(object$CIobject) || ! is.null(object$CIobject$warn))  object$CIobject <- .allCIs(object,level=level,verbose=FALSE)
-    auxCIobject <- .allCIs(object,level=1-((1-object$CIobject$level)*2/3),verbose=FALSE)
+    if (is.null(object$CIobject) || ! is.null(object$CIobject$warn))  object$CIobject <- allCIs(object,level=level,verbose=FALSE)
+    auxCIobject <- allCIs(object,level=1-((1-object$CIobject$level)*2/3),verbose=FALSE)
     CIpoints <- object$CIobject$bounds
     ## those for which the bound is present:
     for (kt in seq_len(NROW(CIpoints))) { 
@@ -234,11 +234,11 @@ rparam <- function(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALS
     }
   }
   # we have 'n' points
-  if (nrow(trypoints)>0L) { ## bc rbind has an aberrant naming behaviour otherwise
+  if (NROW(trypoints)>0L) { ## bc rbind has an aberrant naming behaviour otherwise
     withRepl <- c(seq_len(nrow(trypoints)),sample(nrow(trypoints),1L)) ## original 'n' plus one repliate => 'n+1' 
     trypoints <- trypoints[withRepl,,drop=FALSE]
     trypoints <- rbind(trypoints,object$MSL$MSLE) ## fittedPars only => 'n+2'
-  } else trypoints <- t(object$MSL$MSLE) ## (allows n=0)
+  } else trypoints <- t(object$MSL$MSLE) ## (allows n=0 or simply nvec["MSL"]=0)
   if (verbose) {
     cat("New design points:\n")
     print(trypoints)

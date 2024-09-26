@@ -10,16 +10,6 @@
   stats <- colnames(rawstatempdist)
   ##
   projnames <- ls(projectors)
-  #allranger <- all(sapply(projnames, function(v) inherits( projectors[[v]],"ranger")))
-  imp_methods <- unlist(lapply(projnames, function(v) projectors[[v]]$"importance"))
-  if (length(imp_methods)==length(projnames)) {
-    if (length(u_imp <- unique(imp_methods))==1L) {
-      if ( ! u_imp %in% c("impurity_corrected","permutation")) {
-        warning("Importance method not 'permutation' (preferred) nor 'impurity_corrected': user is responsible to make sure that GoF test will be meaningful.",
-                immediate.=TRUE)
-      } # In particular, the importance measure must indeed increase with importance...
-    } else stop("Different importance methods used for different projectors, cannot be used together for GoF test.")
-  } else stop("Variable importance method not found for all projectors.")
   # rel_imps are importances for each projector, standardized by the RMSE of oob prediction for each projector
   rel_imps <- try(lapply(projnames, function(v) importance_fn(projectors[[v]])/projectors[[v]]$prediction.error), silent=TRUE)
   if ( ! inherits(rel_imps,"try-error")) { 
@@ -35,22 +25,38 @@
   stats
 }
 
+.check_importance_method <- function(projnames, projectors, object) {
+  #allranger <- all(sapply(projnames, function(v) inherits( projectors[[v]],"ranger")))
+  imp_methods <- unlist(lapply(projnames, function(v) projectors[[v]]$"importance.mode"))
+  if (length(imp_methods)==length(projnames)) {
+    if (length(u_imp <- unique(imp_methods))==1L) {
+      if (u_imp=="none") {
+        message("Recomputing projections with importance='permutation' for the goodness-of-fit test...")
+        reproject(object, methodArgs=list(importance="permutation"))
+      } else if ( ! u_imp %in% c("impurity_corrected","permutation")) {
+        warning("Importance method not 'permutation' (preferred) nor 'impurity_corrected': user is responsible to make sure that GoF test will be meaningful.",
+                immediate.=TRUE)
+      } # In particular, the importance measure must indeed increase with importance...
+    } else stop("Different importance methods used for different projectors, cannot be used together for GoF test.")
+  } else stop("Variable importance method not found for all projectors.")
+}
+
 
 goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
-                    nb_cores=NULL, Simulate=attr(object$logLs,"Simulate"),
-                    packages=attr(object$logLs,"packages"), env=attr(object$logLs,"env"),
+                    nb_cores=NULL, Simulate=get_from(object,"Simulate"),
+                    control.Simulate=get_from(object,"control.Simulate"),
+                    packages=get_from(object,"packages"), env=get_from(object,"env"),
                     verbose=interactive(),
                     cl_seed=.update_seed(object),
                     get_gof_stats=.get_gof_stats
 ) {
   feasible <- FALSE
-  stat_obs <- t(attr(object$logLs,"stat.obs"))
+  colTypes <- object$colTypes
+  stat_obs <- t(get_from(object,"stat.obs"))
   if (method=="mixture") { # Result won't be a valid test of goodness of fit !
-    statdens <- .conditional_Rmixmod(object$jointdens,#fittedPars=object$colTypes$statNames,
-                                     given=object$MSL$MSLE, expansion=1) # stat dens|ML parameter estimates
-    plotmain <- "Obs. vs. mixture model"
-    statempdist <- .simulate.MixmodResults(statdens, nsim=1L, size=nsim, drop=TRUE) # directly in projected space
+    statempdist <- simulate(object, nsim=nsim)
     plotframe <- as.data.frame(rbind(statempdist,stat_obs))
+    plotmain <- "Obs. vs. mixture model"
   } else { # actual method: requires resimulation of processus
     if (is.null(Simulate)) {
       stop("'Simulate' function no available. Hint: its default value in goftest() call\n     assumes it was made available through the original add_reftable() call.")
@@ -58,23 +64,25 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
     MSLErep <- t(object$MSL$MSLE)
     MSLErep <- as.data.frame(MSLErep[rep(1,nsim),])
     MSLErep <- cbind(MSLErep,object$colTypes$fixedPars) ## add fixedPars for simulation
-    MSLErep <- MSLErep[,object$colTypes$allPars,drop=FALSE] ## column reordering and remove polluting things (cumul_iter in fixedPars!: _F I X M E_)
+    MSLErep <- MSLErep[,colTypes$allPars,drop=FALSE] ## column reordering and remove polluting things (cumul_iter in fixedPars!: _F I X M E_)
     if (inherits(object,"SLik_j")) {
-      rawstatempdist <- add_reftable(Simulate=Simulate, par.grid=MSLErep, verbose=verbose,
-                                control.Simulate=attr(object$logLs,"control.Simulate"),
+      rawstatempdist <- add_reftable(Simulate=Simulate, parsTable=MSLErep, verbose=verbose,
+                                control.Simulate=control.Simulate,
                                 nb_cores=nb_cores, packages=packages$add_simulation, env=env,
                                 cl_seed=cl_seed)     
     } else {
-      rawstatempdist <- add_simulation(Simulate=Simulate, par.grid=MSLErep,verbose=verbose,
-                                  control.Simulate=attr(object$logLs,"control.Simulate"),
+      rawstatempdist <- add_simulation(Simulate=Simulate, parsTable=MSLErep,verbose=verbose,
+                                  control.Simulate=control.Simulate,
                                   nb_cores=nb_cores, packages=packages$add_simulation, env=env,
                                   cl_seed=cl_seed)   
     }
     rawstatempdist <- na.omit(rawstatempdist)
     if ( ! is.null(projectors <- object$projectors)) {
+      projnames <- ls(projectors)
+      .check_importance_method(projnames, projectors, object)
       plotmain <- "Obs. vs. process: summ.stat. residuals."
       feasible <- TRUE
-      statempdist <- project(rawstatempdist,projectors=projectors) # if composite param were fitted, the projectors are predictors of composite params
+      statempdist <- .project_reftable_raw(rawstatempdist,projectors=projectors, ext_projdata=object$projdata) # if composite param were fitted, the projectors are predictors of composite params
       statempdist <- as.matrix(statempdist[,object$colTypes$statNames,drop=FALSE])
       
       # A good GoF stats should be defined by consideration of some alternative model, but this concept is not available here
@@ -108,11 +116,11 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
   }
   if (length(plot.)) {
     if (length(plot.)<length(plotnames)) message(paste0("Plotting ",length(plot.)," GoF statistics out of ", length(plotnames),":"))
-    plot(plotframe,
-         main=plotmain,
-         col=c(rep("black",nsim),"orange"),
-         pch=c(rep(20,nsim),21),
-         bg="orange")
+    chk <- try(plot(plotframe,
+                    main=plotmain,
+                    col=c(rep("black",nsim),"orange"),
+                    pch=c(rep(20,nsim),21),
+                    bg="orange"))
   }
   if (feasible) {
     safe_nbCluster <- get_nbCluster_range(projdata=gofStats) # this checks that one cluster (or more) can be fitted (.get_gof_stats() presumably handles that, but it provides only a default value.)
@@ -124,25 +132,35 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
       for (it in seq_along(safe_nbCluster)) {
         models[[it]] <- .do_call_wrap("densityMclust",
                                       list(data=gofStats,modelNames=Infusion.getOption("mclustModel"), 
-                                           G=safe_nbCluster[it], verbose=FALSE),
+                                           G=safe_nbCluster[it], verbose=FALSE, plot=FALSE),
                                       pack="mclust")
       }
       gofdens <- .get_best_mclust_by_IC(models) 
+      # predict(gofdens...) will call predict.densityMclust() which will ignore the undefined solve_t_chol_sigma
     } else {
-      gofdens <- .do_call_wrap("mixmodCluster",list(data=gofStats, 
-                                                    nbCluster=safe_nbCluster, 
-                                                    models=.do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
-                                                    seed=123, 
-                                                    strategy=eval(Infusion.getOption("strategy"))))
+      gofdens <- .do_call_wrap(
+        "mixmodCluster",
+        list(data=gofStats, 
+             nbCluster=safe_nbCluster, 
+             models=.do_call_wrap("mixmodGaussianModel",
+                                  list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
+             seed=123, 
+             strategy=.Infusion.data$options$get_mixModstrategy(nc=ncol(gofStats))))
       gofdens <- .get_best_mixmod_by_IC(gofdens) 
+      solve_t_chol_sigma_list <- lapply(gofdens@parameters["variance"], .solve_t_cholfn)
     }
-    solve_t_chol_sigma <- lapply(gofdens@parameters["variance"], function(mat) solve(t(chol(mat))))
-    emp_logLs <- predict(gofdens,newdata=gofStats,solve_t_chol_sigma=solve_t_chol_sigma,log=TRUE) ## pas de binFactor!
-    obs_logL <- predict(gofdens,newdata =gofObsStat,solve_t_chol_sigma=solve_t_chol_sigma,log=TRUE)
+    emp_logLs <- predict(gofdens,newdata=gofStats,solve_t_chol_sigma_list=solve_t_chol_sigma_list,log=TRUE) ## pas de binFactor!
+    obs_logL <- predict(gofdens,newdata =gofObsStat,solve_t_chol_sigma_list=solve_t_chol_sigma_list,log=TRUE)
     pval <- (sum(obs_logL>emp_logLs)+1L)/(nsim+1L)
-    return(list(pval=pval))
+    resu <- list(pval=pval, plotframe=plotframe)
   } else {
     message("No feasible test")
-    return(list(pval=NULL))
+    resu <- list(pval=NULL)
   }
+  class(resu) <- c("goftest", class(resu))
+  return(resu)
 }
+
+summary.goftest <- function(object, ...) utils::str(object)
+
+print.goftest <- function(x, ...) utils::str(x)

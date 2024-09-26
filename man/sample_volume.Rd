@@ -5,7 +5,7 @@
   Sample the parameter space
 }
 \description{
-    These functions take an \code{SLik} object (as produced by \code{\link{MSL}}) and samples its parameter space in (hopefully) clever ways, not yet well documented. \code{rparam} calls \code{sample_volume} to define points targeting the likelihood maximum and the bounds of confidence intervals, with \code{n} for these different targets dependent on the mean square error of prediction of likelihood at the maximum and at CI bounds.
+    These functions are relevant only for the primitive workflow. They take an \code{SLik} object (as produced by \code{\link{MSL}}) and samples its parameter space in (hopefully) clever ways, not yet well documented. \code{rparam} calls \code{sample_volume} to define points targeting the likelihood maximum and the bounds of confidence intervals, with \code{n} for these different targets dependent on the mean square error of prediction of likelihood at the maximum and at CI bounds.
 }
 \usage{
 rparam(object, n= 1, useEI = list(max=TRUE,profileCI=TRUE,rawCI=FALSE), 

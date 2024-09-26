@@ -1,3 +1,4 @@
+# Used only for the never-operational smoothing by Poisson GLMM
 .seekSimplex <- function(point,constraintsList) {
   it <- 1L
   while(it < length(constraintsList)+1L) {
@@ -21,6 +22,8 @@
   return(constraintsList)
 }
 
+## Used only for the never-operational smoothing by Poisson GLMM (=> only for the primitive workflow)
+#
 ## * Constructs a binning 
 ##   using the vertices of the convex hull + a random sample of the points to be binned
 ##   this grid is further "expanded" 
@@ -86,36 +89,34 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   if (is.null(data$trend)) {
     form <- as.formula(paste(form,"+offset(log(",attr(data,"binFactor"),"))")) ## 
   } else form <- as.formula(paste(form,"+offset(log(",attr(data,"binFactor"),")+log(trend))")) ## 
-  init.corrHLfit <- list(rho=rep(1,length(stats)+length(pars)))
-  arglist <- list(formula=form,init.corrHLfit=init.corrHLfit,
-                  HLmethod=.Infusion.data$options$HLmethod,family=poisson(),data=data,ranFix=list(nu=4)) ## HLmethod makes a difference at low response
-  ## non-default control of corrHLfit
+  init <- list(rho=rep(1,length(stats)+length(pars)))
+  arglist <- list(formula=form,init=init,
+                  HLmethod=.Infusion.data$options$HLmethod,family=poisson(),data=data,fixed=list(nu=4)) ## HLmethod makes a difference at low response
+  ## non-default control of fitme
   dotlist <- list(...)
-  formalsNames <- names(formals(corrHLfit))
+  formalsNames <- names(formals(fitme))
   controlNames <- intersect(names(dotlist),formalsNames)
-  ## ranFix must be trated differently from other formalsNames to keep default ranFix$nu if no replacement
-  controlNames <- setdiff(controlNames,"ranFix") ##  
-  ## same idea for init.corrHLfit
-  controlNames <- setdiff(controlNames,"init.corrHLfit")  
+  ## fixed must be treated differently from other formalsNames to keep default fixed$nu if no replacement
+  controlNames <- setdiff(controlNames,"fixed") ##  
+  ## same idea for init
+  controlNames <- setdiff(controlNames,"init")  
   arglist[controlNames] <- dotlist[controlNames] 
-  arglist$init.corrHLfit[names(dotlist$init.corrHLfit)] <- dotlist$init.corrHLfit
-  arglist$ranFix[names(dotlist$ranFix)] <- dotlist$ranFix
-  arglist$init.corrHLfit[names(dotlist$ranFix)] <- NULL
+  arglist$init[names(dotlist$init)] <- dotlist$init
+  arglist$fixed[names(dotlist$fixed)] <- dotlist$fixed
+  arglist$init[names(dotlist$fixed)] <- NULL
   ## tentative subsampling
   nr <- nrow(data)
   ns <- max(20,nr^(2/3))
   subidx <- sample(nr,ns)
   arglist$data <- data[subidx,]
-  fit <- do.call(corrHLfit,arglist)
+  fit <- do.call(fitme,arglist)
   #if(verbose) cat("Smoothing the data, may be slow...\n")
   arglist$data <- data
-  if (fit$spaMM.version<"2.4.26") {
-    corrPars1 <- fit$corrPars[["1"]]
-  } else corrPars1 <- get_ranPars(fit,which="corrPars")[["1"]]
+  corrPars1 <- get_ranPars(fit,which="corrPars")[["1"]]
   ranfix <- c(corrPars1,list(lambda=fit$lambda))
-  arglist$ranFix <- ranfix
-  arglist$`init.corrHLfit` <- NULL
-  fit <- do.call(corrHLfit,arglist)
+  arglist$fixed <- ranfix
+  arglist$init <- NULL
+  fit <- do.call(fitme,arglist)
   ## to see the fit, redata <- data; redata$binFactor <- 1; predict(fit,newdata=redata)
   #browser()
   return(fit)  
@@ -146,34 +147,22 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
 
 .prettysignif <- function(x,extradigits=0) {
   ## extradigits=0 => 99(99)99->99(99)99; 999.9->999.9; 9.999->9.999; 0.xxx -> 3 chifres signif
-  if (is.na(x)) return(NA)
-  #ELSE
-  if (x<1) {n<-3} else if (x>1000) {n <- ceiling(log(x,10))} else {n <- 4}
-  n <- n+extradigits
-  signif(x,n)
-}
-
-.allCIs <- function(object,level=0.95, verbose=TRUE,method="LR",...) {
-  CIs <- list()
-  for (st in object$colTypes$fittedPars) {CIs[[st]] <- confint(object,st,level=level, verbose=verbose,method=method,...)}
-  lowers <- lapply(CIs,function(li) {li$lowerpar})
-  if ( ! is.null(lowers)) names(lowers) <-  paste("low.",names(lowers),sep="")
-  uppers <- lapply(CIs,function(li) {li$upperpar})
-  if ( ! is.null(uppers)) names(uppers) <-  paste("up.",names(uppers),sep="")
-  # the list elements are either numeric vectors or asingle NA... 
-  ordre <- order(c(seq_len(length(lowers)),seq_len(length(uppers))))
-  bounds <- c(lowers,uppers)[ordre]
-  checkvec <- function(vec) {if (identical(vec,NA)) {return(NULL)} else {return(vec)} }
-  whichNAs <- unlist(lapply(bounds,function(vec) {identical(vec,NA)}))
-  missingBounds <- names(bounds[whichNAs])
-  bounds <- do.call(rbind,bounds[ ! whichNAs])
-  return(list(CIs=CIs,bounds=bounds,missingBounds=missingBounds,level=level, warn=NULL)) 
+  for(i in seq_len(length(x))) {
+    xi <- x[i]
+    if (is.na(xi)) x[i] <- NA
+    #ELSE
+    if (xi<1) {n<-3} else if (xi>1000) {n <- ceiling(log(xi,10))} else {n <- 4}
+    n <- n+extradigits
+    x[i] <- signif(xi,n)
+  }
+  x
 }
 
 # new variable name
-.makenewname <- function(base,varnames) { ## post CRAN 1.4.1
-  varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
-  allremainders <- substring(varnames,nchar(base)+1) 
+.makenewname <- function(base,varnames) { 
+  pattern <- paste(base,"[0-9]+",sep="")
+  allmatches <- dir(pattern=pattern)
+  allremainders <- substring(allmatches, nchar(base)+1L) 
   allnumericremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
   ## 2015/03/04
   if (length(allremainders) == 0L && length(allnumericremainders) == 0L) { ## if base = allremainders => length(allnumericremainders) == 0 not sufficient
@@ -188,7 +177,7 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
 }
 
 .generateFileName <- function(base="tmp",ext="") { ## for a file
-  pattern <- paste(base,"*",ext,sep="")
+  pattern <- paste(base,".*",ext,sep="") # regexp .* means any character, zero or more time
   allmatches <- dir(pattern=pattern)
   allremainders <- substring(allmatches,nchar(base)+1)
   allremainders <- unlist(strsplit(allremainders,ext)) ## removes the extension from the remainder 
@@ -210,5 +199,13 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   } else arglist
 }
 
+# extractor handling SLik/Slik_j difference and changes in Slik_j structure (from v2.1.28 onwards)
+.get_reft_raw <- function(object) {
+  if (inherits(object,"SLik")) {
+    rr <- attr(object$logLs,"raw_data")
+  } else if (is.null(rr <- object$reftable_raw)) rr <- object$raw_data
+  #  object$reftable_raw should be null when there are no projector, and rr <- object$raw_data only for back compat
+  rr
+}
 
 

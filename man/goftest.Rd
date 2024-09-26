@@ -1,16 +1,21 @@
 \name{goftest}
 \alias{goftest}
+\alias{summary.goftest}
+\alias{print.goftest}
 \title{
 Assessing goodness of fit of inference using simulation
 }
 \description{
 A goodness-of-fit test is performed in the case projected statistics have been used for inference. Otherwise some plots of limited interest are produced.
+
+\code{summary} and \code{print} methods for results of \code{goftest} call \code{str} to display the structure of this result.
 }
 \usage{
 goftest(object, nsim = 99L, method = "", stats=NULL, plot. = TRUE, nb_cores = NULL, 
-        Simulate = attr(object$logLs, "Simulate"), 
-        packages = attr(object$logLs, "packages"), 
-        env = attr(object$logLs, "env"), verbose = interactive(),
+        Simulate = get_from(object,"Simulate"), 
+        control.Simulate=get_from(object,"control.Simulate"),
+        packages = get_from(object,"packages"), 
+        env = get_from(object,"env"), verbose = interactive(),
         cl_seed=.update_seed(object), get_gof_stats=.get_gof_stats)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -34,8 +39,11 @@ If \code{plot.} is a \bold{numeric vector}, then \emph{u}\code{[plot.]} are reta
   \item{nb_cores, Simulate, packages, env, verbose}{
 See same-named \code{\link{add_simulation}} arguments.
 }
-  \item{cl_seed}{NULL or integer (see \code{\link{refine}} for Details).}
-  \item{get_gof_stats}{function for selecting raw statistics (see Details).}
+  \item{control.Simulate}{
+    A list of arguments of the \code{Simulate} function (see\code{\link{add_simulation}}). The default value should generally be used, unless e.g. it contains the path of an executable on one machine and a different path must be specified on another machine.  
+}
+\item{cl_seed}{NULL or integer (see \code{\link{refine}} for Details).}
+\item{get_gof_stats}{function for selecting raw statistics (see Details).}
 }
 \details{
 \bold{Testing goodness-of-fit:} The test is somewhat heuristic but appears to give reasonable results (the Example shows how this can be verified). It assumes that all summary statistics are reduced to projections predicting all model parameters. It is then conceived as if any projection \emph{p} predicting a parameter were a sufficient statistic for this parameter, given the information contained in the summary statistics \bold{s} (this is certainly the ideal objective of machine-learning regression methods). Then a statistic \emph{u} independent (under the fitted model) from all projections should be a suitable statistic for testing goodness of fit: if the model is correctly specified, the quantile of observed \emph{u}, in the distribution of \emph{u} under the fitted model, should be uniformly distributed over repeated sampling under the data-generating process. The procedure constructs statistics uncorrelated to all \bold{p} (over repeated sampling under the fitted model) and proceeds as if they were independent from \emph{p} (rather than simply uncorrelated). A number (depending on the size of the reference table) of statistics \emph{u} uncorrelated to \emph{p} are then defined. Each such statistic is obtained as the residual of the regression of a given raw summary statistic to all projections, where the regression input is a simulation table of \code{nsim} replicates of \bold{s} under the fitted model, and of their projections \bold{p} (using the \dQuote{projectors} constructed from the full reference table). The latter regression involves one more, small-\code{nsim}, approximation (as it is the sample correlation that is zeroed) but using the residuals is crucially better than using the original summary statistics (as some ABC software may do). An additional feature of the procedure is to construct a single test statistic \emph{t} from joint residuals \bold{u}, by estimating their joint distribution (using Gaussian mixture modelling) and letting \emph{t} be the density of \bold{u} in this distribution.  
@@ -46,8 +54,10 @@ The \bold{diagnostic plot} will show a data frame of residuals \emph{u} of the s
 
 }
 \value{
-A list with currently a single element
+An object of class \code{goftest}, which is a\code{list} with element(s)
 \item{pval }{The p-value of the test (NULL if the test is not feasible).}
+\item{plotframe }{The data frame which is (by default) plotted by the function.
+Its last line contains the residuals \emph{u} for the analyzed data, and other lines contain the bootstrap replicates.}
 }
 \examples{
 ### See end of example("example_reftable") for minimal example.

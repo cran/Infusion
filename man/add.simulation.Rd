@@ -115,11 +115,11 @@ parsp <- init_grid(lower=c(mu=2.8,s2=0.2,sample.size=40),
 simuls <- add_simulation(NULL, Simulate="myrnorm_tab",
               nRealizations=c(as_one=500),
               nsim=500, # myrnorm_tab() argument, part of the 'dots'
-              par.grid=parsp)
+              parsTable=parsp)
 
 \dontrun{ # example continued: parallel versions of the same.
 # Slow cluster setup again
-simuls <- add_simulation(NULL,Simulate="myrnorm_tab",par.grid=parsp,
+simuls <- add_simulation(NULL,Simulate="myrnorm_tab", parsTable=parsp,
               nb_cores=7L,
               nRealizations=c(as_one=500),
               nsim=500, # myrnorm_tab() argument again
