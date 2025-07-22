@@ -1,5 +1,4 @@
 exportPattern("^[[:alpha:]]+")
-# export(".update_projector.SLik_j", ".update_projector.default") # methods of internal generics must be exported...
 importFrom("blackbox", 
            # 'current:
            "as.surface", # called by for plot functions so presumably required irrespective of workflow.
@@ -77,8 +76,6 @@ S3method(predict,dMclust)
 # S3method(predict,gllim)
 S3method(project,default)
 S3method(project,character)
-#S3method(.update_projector,SLik_j)
-#S3method(.update_projector,default)
 S3method(refine,SLik)
 S3method(refine,SLik_j)
 S3method(refine,SLikp)

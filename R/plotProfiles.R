@@ -62,9 +62,9 @@
                          more_inits=init_from_neigh)
     } 
     # optr <- .safe_optim(init[profiledOutPars],objfn=objfn,
-    #                   lower=plower,upper=pupper, LowUp=list(), verbose=FALSE, template=template, object=object)
+    #                   lower=plower,upper=pupper, verbose=FALSE, template=template, object=object)
     optr <- .ad_hoc_opt(init[profiledOutPars], objfn=objfn, lower=plower, upper=pupper, gradient=gradient, 
-                        safe=safe, LowUp=list(), template=template, object=object, neg_ineq_constrfn=neg_ineq_constrfn)
+                        safe=safe,  template=template, object=object, neg_ineq_constrfn=neg_ineq_constrfn)
     profpt <- template
     profpt[profiledOutPars] <- optr$solution
     value <- - optr$objective
@@ -620,8 +620,7 @@ plot1Dprof <- function(object, ## SLik object
         init <- .safe_init(object,given = template[c(parpair, fixedPars)], 
                            plower=lower[profiledOutPars],pupper=upper[profiledOutPars], more_inits=object$MSL$MSLE)
       } else init <- MSLE[profiledOutPars]
-      optr <- .safe_optim(init, objfn=objfn,
-                          lower=lower[profiledOutPars],upper=upper[profiledOutPars], LowUp=list(), 
+      optr <- .safe_optim(init, objfn=objfn, lower=lower[profiledOutPars],upper=upper[profiledOutPars],
                           verbose=FALSE, object=object, template=template, neg_ineq_constrfn=neg_ineq_constrfn)
       value <- - optr$objective
       if ( ! is.null(optr$solution)) {
@@ -665,8 +664,8 @@ plot1Dprof <- function(object, ## SLik object
   dimnames(profpts) <- list(names(template),NULL,NULL)
   if (length(logLvalues) != ncol(par_grid)) {
     stop("Some profile computations appear to have failed.")
-    # problem is that if a bug in the depths of profil()
-    # combinepar() hides it (_____F I X M E____) (still the case? I wrote better diagnostic code for another issue)
+    # Problem was that if a bug occurred in the depths of profil()
+    # combinepar() hid it. I wrote better diagnostic code for another issue so this may be +/- fixed.
   }
   if ( ! is.null(info <- attr(logLvalues,"info"))) object$MSL$init_from_prof <- info$init_from_prof
   dim(logLvalues) <- c(length(xGrid),length(yGrid))

@@ -179,7 +179,8 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 # 1 cluster should always work, so nbCluster=1:2 even if only2 is interesting 
 # Fix for primitve workflow...
 .suspectPts_by_Rmixmod <- function(logls,threshold) {
-  clu <- suppressWarnings(.do_call_wrap("mixmodCluster",list(data=logls,nbCluster=1:2,seed=123) ))
+  mixmodCluster <- .get_wrap("mixmodCluster")
+  clu <- suppressWarnings(mixmodCluster(data=logls,nbCluster=1:2,seed=123))
   if (clu@results[[2L]]@error=="No error") {
     ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
     ## and all lower and higher points form another => we risk losing the higer points !
@@ -195,9 +196,8 @@ infer_surface.logLs <- function(object, method="REML",verbose=interactive(),allF
 # Fix for primitve workflow...
 .suspectPts_by_mclust <- function(logls,threshold) {
   if ("package:mclust" %in% search()) { 
-    clu <- .do_call_wrap("Mclust",
-                         list(data=logls,G=2,verbose=FALSE),
-                         pack="mclust")
+    Mclust <- .get_wrap("Mclust", pack="mclust")
+    clu <- Mclust(data=logls,G=2,verbose=FALSE)
   } else  stop("'mclust' should be loaded first.") ## occurs if only loaded in a child process...
   ## problem in identifying wrong points: when CIpoints accumulate, they form a low-variance cluster
   ## and all lower and higher points form another => we risk losing the higer points !

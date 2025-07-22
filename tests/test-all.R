@@ -23,9 +23,9 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
       }
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         if (TRUE) { # see above comment about Rstudio
-          priv_testfiles <- dir(paste0(spaMM::projpath(),"/package/tests_private/"),pattern="*.R$",full.names = TRUE)
+          priv_testfiles <- dir(paste0(Infusion::projpath(),"/package/tests_private/"),pattern="*.R$",full.names = TRUE)
         } else {
-          priv_testfiles <- dir(paste0(spaMM::projpath(),"/package/tests_private/"),full.names = TRUE)
+          priv_testfiles <- dir(paste0(Infusion::projpath(),"/package/tests_private/"),full.names = TRUE)
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
         }
         priv_timings <- t(sapply(priv_testfiles, function(fich){

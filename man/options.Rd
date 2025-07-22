@@ -20,6 +20,8 @@ Infusion.getOption(x)
   The following values, with their defaults, are used in \code{Infusion}:
 
   \describe{
+\item{\code{version}}{A \code{\link{package_version}} object or something that can be converted to such an object by \code{\link{as.package_version}}. The default is the installed version of \pkg{Infusion}. Alternative values may be used by some functions (such as \code{\link{get_workflow_design}}) to use control values of the algorithms from other versions the the package. 
+;   }
 \item{\code{mixturing}}{character string: package or function to be used for mixture modelling. Recognized packages are \code{"Rmixmod"} (the default) and \code{"mclust"};   }
 \item{\code{train_cP_size}:}{Expression for \code{train_cP_size} argument of \code{\link{project.character}}.}
 \item{\code{trainingsize}:}{Expression for \code{trainingsize} argument of \code{\link{project.character}}.}
@@ -32,8 +34,10 @@ Infusion.getOption(x)
 \item{\code{nRealizations=1000}:}{default value of \code{nRealizations} argument of \code{\link{add_simulation}}. Number of realizations for each empirical distribution.}
 \item{\code{mixmodGaussianModel="Gaussian_pk_Lk_Ck"}:}{default models used in clustering by \code{Rmixmod}. Run \code{Rmixmod::mixmodGaussianModel()} for a list of possible models, and see the statistical documentation (Mixmod Team 2016) for explanations about them.}
 \item{\code{global_strategy_args}:}{list of arguments for \code{Rmixmod::mixmodStrategy()}.}
-\item{\code{seq_nbCluster= function(projdata, nr=nrow(projdata)) {seq(ceiling(nr^0.31))}}:}{function to control the value of \code{nbCluster} used in clustering by \code{Rmixmod} (see Details for discussion of this default).}
-\item{\code{maxnbCluster = function(projdata) {...} }:}{function to control the maximum number of clusters (see Details).}
+\item{\code{nbClu_pow_rule_fn = function(nr) {....}} and\cr
+      \code{maxnbCluster = function(projdata, ...) {....} }:}{
+functions controlling the value of \code{nbCluster} used in clustering by \code{Rmixmod} or other mixture modelling backends. See \code{\link{get_nbCluster_range}} for details.      
+}
 \item{\code{example_maxtime=2.5}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples (or some very rough approximation for it) on one author's laptop is compared to this value.} 
 \item{\code{nb_cores}}{Number of cores for parallel computations (see Details for implementation of these).}
@@ -44,9 +48,6 @@ and possibly other undocumented values for development purposes.
 
 }
 \details{
-  %Up to version 1.3.0, the default upper value of the \code{nbCluster} range was the value recommended (\eqn{n^0.3} as function fo the number of points \eqn{n}) in the \code{mixmod} statistical documentation (Mixmod Team, 2016). However, simulations have suggested that this is conservative (i.e., it underfitted the data, resulting in systematic biases in inferences of likelihood surfaces), hence \eqn{2 n^0.3} is used now. 
-  The set of the number of clusters tried (\code{nbCluster} argument in \code{Rmixmod}) is controlled by two options: \code{seq_nbCluster} and \code{maxnbCluster}. The second is used to correct the first, using the dimensions of the \code{projdata} locally used for clustering, which typically differs from the dimensions of the user-level \code{data} (if projections have been applied, in particular). The default upper value of the \code{nbCluster} range is derived from the value \eqn{n^{0.3}} recommended in the \code{mixmod} statistical documentation (Mixmod Team, 2016), but modified based on different considerations. First, that recommendation may be suitable for a large input of points in low dimension, but may request estimation of too many clustering parameters as the dimension of data points increases, justifying the correction according to\code{maxnbCluster}. Conversely, for large number of points, experience shows that the maximum value derived from such rules is practically always selected by AIC, supporting a rule specifying a higher number of points (such as the currently retained default \eqn{n^{0.31}}).
-  
   \code{Infusion} can perform parallel computations if several cores are available and requested though \code{Infusion.options(nb_cores=.)}. If the \code{doSNOW} back-end is attached (by explicit request from the user), it will be used; otherwise, \code{pbapply} will be used. Both provide progress bars, but \code{doSNOW} may provide more efficient load-balancing. The character shown in the progress bar is \code{'P'} for parallel via \code{doSNOW} backend, \code{'p'} for parallel via \code{pbapply} functions, and \code{'s'} for serial via \code{pbapply} functions. In addition, \code{add_simulation} can parallelise at two levels: at an outer level over parameter point, or at an inner level over simulation replicates for each parameter point. The progress bar of the outer computation is shown, but the character shown in the progress bar is \code{'N'} if the inner computation is parallel via the \code{doSNOW} backend, and \code{'n'} if it is parallel via \code{pbapply} functions. So, one should see either \code{'P'} or \code{'N'} when using \code{doSNOW}.
 }
 \references{

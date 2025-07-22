@@ -89,10 +89,10 @@ calc.lrthreshold.default <- function(object,dlr=NULL,verbose=interactive(),...) 
 
 # has SLikp and SLik method
 
-refine_nbCluster <- function(nr, onlymax=7L) {
-  res <- seq_nbCluster(nr=nr)
+refine_nbCluster <- function(nr, nc, onlymax=7L) {
+  res <- seq_nbCluster(nr=nr, nc=nc)
   maxres <- max(res)
-  if (maxres>onlymax) res <- maxres
+  if (maxres>onlymax) res <- structure(maxres, max=TRUE)
   res
 }
 
@@ -119,53 +119,87 @@ recluster <- function(object, eval_RMSEs=NULL, CIs=NULL,
 #   refine(object = object,..., ntot=0L, maxit=1L, eval_RMSEs=FALSE, CIs=FALSE, update_projectors=TRUE)
 # }
 
-# Next line does not make sense
-# .update_projector <- function(object, ...) UseMethod("update_projector") # internal generic... not used...
-
-.update_projector.SLik_j <- function(object, parm=NULL, proj,  # arguments work as in plot_proj 
-                                     verbose=FALSE, 
-                                     reftable_raw,
-                                     methodArgs=list(), 
-                                     ...) {
-  if (is.null(parm)) {
-    projector <- object$projectors[[proj]] # there must be proj
-    # parm <- paste(projector$call$formula[[2]])
-    parm <- attr(projector,"project_call")$x
-  } else {
-    projnames <- ls(object$projectors)
-    # pars <- sapply(projnames, function(st) paste(object$projectors[[st]]$call$formula[[2]])) # may be removed...
-    pars <- sapply(projnames, function(st) attr(object$projectors[[st]],"project_call")$x) # ___F I X M E___ formula not always present
-    proj <- names(which(pars==parm))
-    projector <- object$projectors[[proj]]
+..update_projproj <- function(projproj, 
+                                      verbose=FALSE, reftable_raw, 
+                               project_methodArgs, # optional modif of the methodArgs args stored in the project_call:
+                                      # they are for project.character(), not directly ranger() 
+                                      # => project's default splitrule = "extratrees" can be reversed by setting it = "variance"
+                                      ...) {
+  projcall <- attr(projproj,"project_call") # will call project.character
+  methodArgs <- projcall$methodArgs
+  methodArgs[names(project_methodArgs)] <- project_methodArgs # the two user-level args override projcall$methodArgs
+  projcall$verbose <- verbose
+  projcall$data <- reftable_raw[,names(projcall$data)]
+  projcall$methodArgs[names(methodArgs)] <- methodArgs
+  projproj <- eval(projcall) #,envir=environment(projcall))    
+  if ( (! .one_time_warnings$update_warned) && 
+       ! inherits( projproj, c("HLfit", "randomForest","ranger"))) {
+    warning(paste0(c("You may be updating a projection using a method\n",
+                     "for which Infusion has no built-in method to avoid overfitting (see help('project'))."))) 
+    .one_time_warnings$update_warned <- TRUE
   }
-  .update_projector.default(projector, verbose=verbose, reftable_raw=reftable_raw, 
-                           methodArgs=methodArgs, ...)
+  projproj
 }
 
-.update_projector.default <- function(projector, 
-           verbose=FALSE, reftable_raw, 
-           methodArgs=list(), # optional modif of the methodArgs args stored in the project_call:
-             # they are for project.character(), not directly ranger() 
-             # => project's default splitrule = "extratrees" can be reversed by setting it = "variance"
-           ...) {
-    projcall <- attr(projector,"project_call") # will call project.character
-    projcall$verbose <- verbose
-    projcall$data <- reftable_raw[,names(projcall$data)]
-    projcall$methodArgs[names(methodArgs)] <- methodArgs
-    if ( (! .one_time_warnings$update_warned) && ! inherits(projector, c("HLfit", "randomForest","ranger"))) {
-      warning(paste0(c("You may be updating a projection using a method\n",
-                       "for which Infusion has no built-in method to avoid overfitting (see help('project'))."))) 
-      .one_time_warnings$update_warned <- TRUE
-    }
-    projector <- eval(projcall) #,envir=environment(projcall))    
-    projector
+.proj_from_parm <- function(projectors, parm) {
+  projnames <- ls(projectors)
+  is_projector  <- sapply(projnames, function(st) inherits(projectors[[st]],"projector"))
+  pars  <- setNames(character(length(projnames)),projnames)
+  for (st in projnames) {
+    if (is_projector[st]) {
+      pars[st] <- projectors[[st]]$parname
+    } else pars[st] <- attr(projectors[[st]],"project_call")$x # paste(projectors[[st]]$call$formula[[2]]) # formula not always present
   }
+  projs <- names(which(pars==parm))
+  if (length(projs)>1L) { 
+    stop("projection name (rather than only parameter name) needed in upstream code.")
+  } else proj <- projs 
+  list(proj=proj, is_projector=is_projector[proj])
+}
 
-deforest_projectors <- function(object) {
+.update_projector <- function(projectors=projectors, # full list (environment) needed in general
+                              focal, parm, # one of them needed
+                              reftable_raw, verbose=FALSE, 
+                              project_methodArgs) {
+  if (missing(focal)) { # then try to guess it from 'parm'
+    focal <- .proj_from_parm(projectors, parm)$proj
+  }
+  projector_st <- projectors[[focal]]
+  if (inherits(projector_st,"projector")) {
+    if (projector_st$npp_opt=="quantiles") {
+      projector_st$projector <- projectors[[projector_st$parent]]
+    } else {
+      parentpreds <- .predictWrap(projectors[[projector_st$parent]], newdata=reftable_raw,
+                                  methodArgs=project_methodArgs, ext_projdata= reftable_raw)
+      reftable_raw[,projector_st$respname] <- reftable_raw[,projector_st$parname] - parentpreds
+      projector_st$projector <- ..update_projproj(
+        projproj=projector_st$projector, verbose=verbose$proj, reftable_raw=reftable_raw,
+        project_methodArgs=project_methodArgs)
+    }
+    projector_st
+  } else {
+    ..update_projproj( # INPUT OBJECT'S 'projectors' ENVIRONMENT IS MODIFIED, but 
+      # ... only the return object's logLs are updated. So, while plot_proj(upsliks[["14K"]], parm="log.Na.") looks like 
+      # ... it plots the updated projections, it actually uses the not-updated $logLs... Really confusing. =>
+      # ... a system of timeStamp's has been implemented to track and warn about such issues. 
+      projproj=projector_st, verbose=verbose$proj, reftable_raw=reftable_raw, 
+      project_methodArgs=project_methodArgs) 
+  }
+}
+
+
+deforest_projectors <- function(object) { 
+  # There is a deforest fn in ranger but it has a distinct purpose (doc) 
+  # and removes many other things
   projs <- object$projectors 
   for (proj_it in names(projs)) {
-    projs[[proj_it]]$forest <- NULL
-    projs[[proj_it]]$call <- NULL
+    if (inherits(projs[[proj_it]],"ranger")) {
+      projs[[proj_it]]$forest <- NULL
+      projs[[proj_it]]$call <- NULL
+    } else if (inherits(projs[[proj_it]],"projector")) { # npp stuff
+      projs[[proj_it]]$projector$forest <- NULL
+      projs[[proj_it]]$projector$call <- NULL
+    }
   }
   "*Input* object has been internally modified." # 'object$projectors' environment modified
 }
@@ -176,8 +210,12 @@ deforest_projectors <- function(object) {
   projnames <- ls(projectors)
   missing_forests <- logical(length(projnames))
   names(missing_forests) <- projnames
-  for (st in projnames) missing_forests[st] <- (inherits(projectors[[st]], "ranger") && 
-                                                 is.null(projectors[[st]]$forest$split.varIDs))
+  for (st in projnames) missing_forests[st] <- (
+    (inherits(projectors[[st]], "ranger") && 
+       is.null(projectors[[st]]$forest$split.varIDs)) ||
+      (inherits(projectors[[st]], "projector") && # npp stuff
+         is.null(projectors[[st]]$projector$forest$split.varIDs))
+  )
   missing_forests
 }
 
@@ -316,17 +354,20 @@ deforest_projectors <- function(object) {
   timeStamps # returned _list_
 }
 
-.wrap_update_projectors <- function(projectors, sub_reftable, 
-                                    verbose, project_methodArgs) {
+.wrap_update_projectors <- function(projectors=projectors, sub_reftable, 
+                                    verbose, project_methodArgs) { 
   proj_names <- ls(projectors) # list of objects in environment
   np <- length(proj_names)
   if (np) {
-    if (verbose$most) {
-      if (.is_devel_session()) {
+    if (.is_devel_session()) { # elaborate effort to distinguish API from non-API output
+      if (verbose$most) {
         devel_mess <- cli::col_green(paste(nrow(sub_reftable), "samples used.\n"))
-      } else devel_mess <- "\n"
-      cat("Updating projectors... ", devel_mess)
-    } 
+        cat("Updating projectors... ", devel_mess)
+      } else {
+        devel_mess <- cli::col_green(paste("Updating projectors... ",nrow(sub_reftable), "samples used.\n"))
+        cat(devel_mess)
+      } 
+    } else if (verbose$most) cat("Updating projectors... \n")
     if (verbose$proj) {
       plot.new()
       if (np>3L) {
@@ -338,16 +379,10 @@ deforest_projectors <- function(object) {
                                     mai=mai) 
     }
     for (st in proj_names) {
-      projector <- projectors[[st]]
-      if ( ! is.null(projector)) {
-        methodArgs <- attr(projector,"project_call")$methodArgs
-        methodArgs[names(project_methodArgs)] <- project_methodArgs # the two user-level args override projcall$methodArgs
-        projectors[[st]] <- .update_projector.default( # INPUT OBJECT'S 'projectors' ENVIRONMENT IS MODIFIED, but 
-          # ... only the return object's logLs are updated. So, while plot_proj(upsliks[["14K"]], parm="log.Na.") looks like 
-          # ... it plots the updated projections, it actually uses the not-updated $logLs... Really confusing. =>
-          # ... a system of timeStamp's has been implemented to track and warn abotu such issues. 
-          projector, verbose=verbose$proj, reftable_raw=sub_reftable, 
-          methodArgs=methodArgs) 
+      if ( ! is.null(projectors[[st]])) {
+        projectors[[st]] <- .update_projector(
+          projectors=projectors, focal=st, reftable_raw=sub_reftable, verbose=verbose, 
+          project_methodArgs=project_methodArgs)
       }
     }
     if (verbose$proj) par(opar)
@@ -384,7 +419,9 @@ deforest_projectors <- function(object) {
 .get_initParam <- function(object) {
   if ( inherits(object$jointdens,"MAF")) {
     NULL 
-  } else object$jointdens@parameters
+  } else if (isS4(object$jointdens)) {
+    object$jointdens@parameters
+  } else object$jointdens$parameters # dMclust
 }
   
 ## si Simulate est exterieure, il faut que l'utilisateur puisse decomposer la fn et sample_volume doit être public...
@@ -406,14 +443,15 @@ refine.default <- function(
   precision = Infusion.getOption("precision"),
   eval_RMSEs=workflow_design$reftable_sizes, 
   ##       verbosity
-  verbose=list(notable=TRUE, most=interactive(),final=NULL,
+  verbose=list(most=interactive(),final=NULL, notable=TRUE, # order of defaults matter for .reformat_refine_verbose
                movie=FALSE,proj=FALSE,rparam=NULL, progress_bars=interactive()),
   ##       projection controls
   update_projectors=NULL,
   methodArgs=list(),
   ##       Likelihood surface modeling (up-to-date workflow)
   using=object$using, ## mclust...
-  nbCluster=quote(refine_nbCluster(nr=nrow(data))),
+  nbCluster=quote(refine_nbCluster(nr=nrow(data), nc=ncol(data))), 
+            # : to be evaluated only within the .infer_SLik_joint() call with the 'data' arg found there 
   ##       parallelisation
   cluster_args=list(), nb_cores=NULL, env=get_from(object,"env"), 
   packages=get_from(object,"packages"), cl_seed=.update_seed(object),
@@ -747,8 +785,9 @@ refine.default <- function(
               # or I removed one of its bulky elements.
               if (verbose$notable) message("'forest' information not available from some projector(s). Regenerating it...")
               for (st in names(which(missing_forests))) {
-                projectors[[st]] <- .update_projector.SLik_j(
-                  object, proj=st, reftable_raw=sub_reftable, methodArgs = list(write.forest=TRUE))
+                projectors[[st]] <- .update_projector(
+                  projectors=projectors, focal=st, reftable_raw=sub_reftable, 
+                  project_methodArgs = list(write.forest=TRUE))
               }
             } 
             

@@ -30,7 +30,7 @@ Possible values of \code{template} are \code{"zuko-like"}, \code{"PSM19"}, \code
 }
 }
 \details{
-\bold{Possible \code{using} values:}
+\bold{Possible \code{using} values} (\code{using} being an argument of \code{infer.SLik.joint} or \code{refine}):
 
 With \code{using="c.mafR"} four different MAFs are computed in every iteration:
 the density of statistics given parameters (providing the likelihood), the joint density, the instrumental density of parameters, and the \dQuote{instrumental posterior} density of parameters given the data.

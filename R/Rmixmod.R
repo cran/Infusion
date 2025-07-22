@@ -10,6 +10,7 @@ setClassUnion("NULLorNum", c("NULL","numeric"))
 # class(<mixmodCluster object>) <- structure("dMixmod", package="Infusion")
 ## But NOT an attempted extension by
 #class(resu) <- c("dMixmod", class(resu)) # => Setting class(x) to multiple strings ("dMixmod", "MixmodResults", ...); result will no longer be an S4 object
+# This is reversible by class(<dMixmod object>) <- structure("MixmodResults", package="Rmixmod")
 setClass("dMixmod", 
          slots=c(freq="NULLorNum",
                  varNames="character",
@@ -108,14 +109,18 @@ setClass("dMixmod",
     ! length(mmRe_obj@nbCluster)
 }
 
-
+# To prevent errors in .chol_t_solve
+# .chol_t_solve spaMM::regularize singular matrices.
+# But spaMM::regularize corrects matrices with large condnum;
+# it does not fix near-zero matrices which have small condnum (near-0/near-0) 
+# So what we need to check is the largest eigenvalue
 .any_mixmodCluster_w_retries_issue <- function(mmCl_resu) {
   inherits(mmCl_resu,"try-error") || 
-    anyNA((bestResult <- mmCl_resu@bestResult)@parameters@mean) ||
-    (! length(bestResult@nbCluster)) ||
-    min(table(bestResult@partition))<2L 
-  # bestResult once had a cluster with a single element. cov matrix was ==0
-  # _____F I X M E_____ => perform tests on the cov matrices [compare determinants?] ? or increase threshold ? 
+    (! length((bestResult <- mmCl_resu@bestResult)@nbCluster)) ||
+    anyNA(bestResult@parameters@mean) ||
+    #     min(table(bestResult@partition))< .Infusion.data$options$min_partition ||
+    min(sapply(bestResult@parameters@variance, 
+               function(v) (eigen(v, only.values = TRUE)$values[1]))) < 1e-8
 }
 
 .any_mixmodCluster_issue <- function(mmCl_resu, arglist) {
@@ -143,8 +148,9 @@ setClass("dMixmod",
   chk
 }
 
-.mixmodCluster_w_retries <- function(data, locarglist) {
-  resu <- try(.do_call_wrap("mixmodCluster", locarglist), silent = TRUE)
+.mixmodCluster_w_algo_retries <- function(data, locarglist) {
+  mixmodCluster <- .get_wrap("mixmodCluster")
+  resu <- try(do.call(mixmodCluster, locarglist), silent = TRUE)
   
   if (.any_mixmodCluster_issue(resu, locarglist)) {
     locdefault <- locarglist$strategy@algo
@@ -160,12 +166,12 @@ setClass("dMixmod",
     } 
     locarglist$strategy <- .Infusion.data$options$get_mixModstrategy(
       nc=ncol(data), algo=alt_algo)
-    resu <- try(.do_call_wrap("mixmodCluster",locarglist),silent = TRUE)
+    resu <- try(do.call(mixmodCluster, locarglist), silent = TRUE)
   }
   if (.any_mixmodCluster_issue(resu, locarglist)) {
     locarglist$strategy <- .Infusion.data$options$get_mixModstrategy(
       nc=ncol(data), algo=alt_algo2)
-    resu <- try(.do_call_wrap("mixmodCluster",locarglist),silent = TRUE)
+    resu <- try(do.call(mixmodCluster, locarglist), silent = TRUE)
   }
   
   if (.any_mixmodCluster_issue(resu, locarglist)) {
@@ -174,24 +180,48 @@ setClass("dMixmod",
     alt_initMethod <- setdiff(c("CEM","SEMMax"), locarglist$strategy@initMethod)[1L]
     locarglist$strategy <- .Infusion.data$options$get_mixModstrategy(
       nc=ncol(data),initMethod=alt_initMethod)
-    resu <- try(.do_call_wrap("mixmodCluster",locarglist),silent = TRUE)
-    # (___F I X M E___?) I could nest another call to .mixmodCluster_w_retries() retrying all algo
+    resu <- try(do.call(mixmodCluster, locarglist), silent = TRUE)
+    # (___F I X M E___?) I could nest another call to .mixmodCluster_w_algo_retries() retrying all algo
     # but I must avoir an infinite loop on initMethod...
   }
   
   .any_mixmodCluster_issue(resu,locarglist)
-  resu
+  resu # mixmodCluster object
+}
+
+.mixmodCluster_w_re_retries <- function(data, locarglist) {
+  clu_try <- .mixmodCluster_w_algo_retries(data, locarglist = locarglist)
+  if (.any_mixmodCluster_w_retries_issue(clu_try)) {
+    # changing the seed seems more efficient than changing the algorithm (!)
+    # here a simple RNG with short period should be enough. =>
+    # 'random0' - (short period in https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
+    locarglist$seed <- (8121L * locarglist$seed + 28411L) %% 134456L 
+    if (locarglist$strategy@initMethod=="parameter") locarglist$strategy@initMethod <- "CEM" # otherwise seed is ignored.
+    clu_try <- .mixmodCluster_w_algo_retries(data=data, locarglist=locarglist)
+  }
+  if (.any_mixmodCluster_w_retries_issue(clu_try)) { # Then we try any smaller size.
+    for (nb in rev(seq_len(min(locarglist$nbCluster)-1L))) {
+      locarglist$nbCluster <- nb
+      clu_try <- .mixmodCluster_w_algo_retries(data=data, locarglist=locarglist)
+      if ( ! .any_mixmodCluster_w_retries_issue(clu_try) ) break
+    }
+  } 
+  clu_post <- clu_try@bestResult # MixmodResults, not mixmodCluster
+  class(clu_post) <- structure("dMixmod", package="Infusion") 
+  clu_post@strategy <- locarglist$strategy
+  clu_post # dMixmod object
 }
 
 # Alternative to (mixmodCluster+selection by AIC), returns a dMixmod object 
 .densityMixmod <- function(
-    data, stat.obs, nbCluster=NULL, 
-    models=.do_call_wrap("mixmodGaussianModel",
-                         list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
+    data, stat.obs, nbCluster, 
+    models={
+      mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
+      mixmodGaussianModel(listModels=Infusion.getOption("mixmodGaussianModel"))
+    }, 
     seed=Infusion.getOption("mixmodSeed"),
     initParam=NULL) {
   # stat.obs useful for boundaries and to handle degenerate distributions:
-  if (is.null(nbCluster)) nbCluster <- get_nbCluster_range(projdata=data)
   ## 
   blob <- .process_boundaries(data, stat.obs, boundaries=attr(stat.obs,"boundaries")) # original role probably irrelevant
   #     but blob is used 
@@ -220,51 +250,29 @@ setClass("dMixmod",
     # Infusion.options(mixmodSeed=789, global_strategy_args=list(initMethod="CEM"))
     locarglist <- list(data=as.data.frame(data), nbCluster=nbCluster, models=models, seed=seed, 
                        strategy=locstrategy)
-    #  x <- mixmodCluster(as.data.frame(data),seq(2*log(nrow(data))),strategy = mixmodStrategy(seed=123))
-    # statdoc of mixmod recommends ceiling(nrow(data)^0.3) and refers to Bozdogan93
-    # But...... it seems to underfit, hence use larger nbCluster range
-    resu <- .mixmodCluster_w_retries(data=data, locarglist=locarglist)
-    # resu should be a MixmodCluster object, with an element@bestResult of class mixmodResult
+    
     if (length(nbCluster)==1L) {
-      if (.any_mixmodCluster_w_retries_issue(resu)) {
-        # changing the seed seems more efficient than changing the algorithm (!)
-        # here a simple RNG with short period should be enough. =>
-        # 'random0' - (short period in https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
-        locarglist$seed <- (8121L * locarglist$seed + 28411L) %% 134456L 
-        if (locarglist$strategy@initMethod=="parameter") locarglist$strategy@initMethod <- "CEM" # otherwise seed is ignored.
-        resu <- .mixmodCluster_w_retries(data=data, locarglist=locarglist)
-      }
-      if (.any_mixmodCluster_w_retries_issue(resu)) { # Then we try any smaller size.
-        for (nb in rev(seq_len(min(nbCluster)-1L))) {
-          locarglist$nbCluster <- nb
-          x <- .mixmodCluster_w_retries(data=data, locarglist=locarglist)
-          if ( ! .any_mixmodCluster_w_retries_issue(x) ) break
-        }
-        resu <- x@bestResult # MixmodResults, not mixmodCluster
-        class(resu) <- structure("dMixmod", package="Infusion") 
-        resu@strategy <- x@strategy
-      } 
+      resu <- .mixmodCluster_w_re_retries(data=data, locarglist=locarglist)
+      # : dMixmod object with (possibly updated) strategy info
     } else {
       ## in that case, calling .any_mixmodCluster_w_retries_issue() would still checks @bestResult, 
-      ## which may be invalid (possibly irrelevant), and  
+      ## which may be an invalid clustering, but this is possibly irrelevant, since  
       ## .get_best_mixmod_by_IC(resu) is able to extract other, possibly valid or invalid models
       ## =>  This means .get_best_mixmod_by_IC() should check and reject any invalid model,
       ## so that the .get_best_mixmod_by_IC() result below is correct.
       ## I finally got an example from test-reparam -> ini_rpdensv <- infer_SLik_joint(projrpSimuls,stat.obs=projrpSobs)
       ## ... in the formal checks only!
-    }
-    ## Rmixmod::mixmodCluster and Infusion::dMixmod objects have strategy info, but Rmixmod::mixmodResults don't.
-    ## And the finally succesful strategy may differ from the locarglst$ one.
-    ## => Awkward copying with conditional initialization: 
-    ## 'strategy <- ...' needed whenever we get a mixmodCluster; '... <- strategy' whenever we create a dMixmod.
-    if ( inherits(resu,"MixmodCluster")) {
+      resu <- .mixmodCluster_w_algo_retries(data=data, locarglist=locarglist)
+      # : this resu is a MixmodCluster object, which contains several  Rmixmod::mixmodResults ones;
+      # The strategy info is nos in the Rmixmod::mixmodResults.
+      # So we extract the strategy and one  mixmodResults object and put then together in the dMixmod one. 
+      # as done internally by .mixmodCluster_w_re_retries().
       strategy <- resu@strategy
       resu <- .get_best_mixmod_by_IC(resu) # MixmodResults
-    } 
-    if ( inherits(resu,"MixmodResults")) {
       class(resu) <- structure("dMixmod", package="Infusion") 
       resu@strategy <- strategy
-    } 
+    }
+    
     if (resu@model=="Gaussian_pk_Lk_C") { 
       ## then cov matrices are proportional, wecheck they are not too heterogeneous
       varmats <- resu@parameters@variance
@@ -423,7 +431,8 @@ predict.dMixmod <- function(object,
     logdensity <- logdensity - .logsumexp(logdensity)
     
     grad <- rowSums(sweep(grads, MARGIN=2L, exp(logdensity), `*`))
-    
+    # user must provide $grad_prior_logL() in addition to $prior_logL()
+    if ( ! is.null(object$prior_logL)) logl <- logl + object$grad_prior_logL(newdata)
   } else {
     stop("code missing here")
 
@@ -495,23 +504,26 @@ plot.dMixmod <- function(x, data=NULL,
   return(simuls)
 }
 
-.do_call_wrap <- function(chr_fnname,arglist, pack="Rmixmod") { # could be sought as .wrap_do_call
-  #eval(as.call(c(quote(require),list(package="Rmixmod", quietly = TRUE))))
-  if (length(grep(pack,packageDescription("Infusion")$Imports))) {
-    ## then the necessary functions must be imported-from in the NAMESPACE  
-    do.call(chr_fnname,arglist) ## "stuff"
-  } else if (length(grep(pack,packageDescription("Infusion")$Suggests))) {
-    ## then the necessary functions cannot be imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
-    if ( requireNamespace(pack, quietly = TRUE)) {
-      #eval(as.call(c(chr_fnname,arglist))) # quote(stuff)
-      myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      do.call(myfun,arglist) ## "stuff"           ## la version "jeroen" (ibid) est int aussi.
-    } else {stop(paste("'",pack,"' required but not available.",sep=""))}
-  } else { ## package not declared in DESCRIPTION; to circumvent possible archiving of Rmixmod
-    if (suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))) {
-      #eval(as.call(c(chr_fnname,arglist))) # quote(stuff)
-      do.call(chr_fnname,arglist) ## "stuff"
-    } else {stop(paste("'",pack,"' required but not available.",sep=""))}
+.get_wrap <- local({
+  InfusionDescription  <- NULL
+  function(chr_fnname, pack="Rmixmod") { # could be sought as .wrap_do_call
+    if (is.null(InfusionDescription)) InfusionDescription <<- packageDescription("Infusion")
+    if (length(grep(pack, InfusionDescription$Imports))) { 
+      ## then the necessary functions must be imported-from in the NAMESPACE  
+      get(chr_fnname) ## "stuff"
+    } else if (length(grep(pack,InfusionDescription$Suggests))) {
+      ## then the necessary functions cannot be imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
+      if ( requireNamespace(pack, quietly = TRUE)) {
+        #eval(as.call(c(chr_fnname,arglist))) # quote(stuff)
+        get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      } else {stop(paste("'",pack,"' required but not available.",sep=""))}
+    } else { ## package not declared in DESCRIPTION; originally to circumvent possible archiving of Rmixmod
+      if (suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))) {
+        #eval(as.call(c(chr_fnname,arglist))) # quote(stuff)
+        # do.call(chr_fnname,arglist) ## "stuff" # syntax assuming the function is exported...
+        get(chr_fnname, asNamespace(pack))
+      } else {stop(paste("'",pack,"' required but not available.",sep=""))}
+    }
   }
-}
+})
 

@@ -29,15 +29,16 @@
 
 # A public interface for .safe_optim is profile.SLik()
 .safe_optim <- function (init, objfn, lower, upper, template=NULL, neg_ineq_constrfn=NULL, 
-                         eq_constrfn=NULL, ..., 
+                         eq_constrfn=NULL, LowUp=list(lower=lower,upper=upper), ..., 
                          object) { 
   # special handling of template argument bc nloptr in passing all \dots it receives to the objective function,
   # so none may be 'ignored' (unless that function itself has \dots, but then its even worse: nloptr finds that 
   # "eval_f requires argument '...' but this has not been passed to the 'nloptr' function.")
   if (is.null(neg_ineq_constrfn) && is.null(eq_constrfn)) { 
     if (is.null(template)) {
-      .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, ...)
-    } else .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, template=template, ...)
+      .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, LowUp=LowUp, ...)
+    } else .safe_opt(init=init, objfn=objfn, lower=lower, upper=upper, 
+                     template=template, LowUp=LowUp, ...)
   } else {
     if (is.character(init)) { # no init point was found satisfying constraints
       return(list(info=init, objective=Inf)) # ie logL=-Inf

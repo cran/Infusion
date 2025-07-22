@@ -70,7 +70,7 @@ See Details for the required value of the \code{method}s called by \code{infer_l
 }
 \details{
 By default, density estimation is based on \code{Rmixmod} methods. Other available methods are not routinely used and not all of \code{Infusion} features may work with them. The function \code{Rmixmod::mixmodCluster}%\code{\link[Rmixmod]{mixmodCluster}}, 
-is called, with arguments \code{nbCluster=seq_nbCluster(nr=nrow(data))} and \code{mixmodGaussianModel=Infusion.getOption("mixmodGaussianModel")}. If \code{Infusion.getOption("seq_nbCluster")} specifies a sequence of values, then several clusterings are computed and AIC is used to select among them.  
+is called, with arguments \code{nbCluster=seq_nbCluster(nr=nrow(data), nc=ncol(data))} and \code{mixmodGaussianModel=Infusion.getOption("mixmodGaussianModel")}. If \code{Infusion.getOption("seq_nbCluster")} specifies a sequence of values, then several clusterings are computed and AIC is used to select among them.  
 
 \code{infer_logL_by_GLMM}, \code{infer_logL_by_Rmixmod}, \code{infer_logL_by_mclust}, and \code{infer_logL_by_Hlscv.diag} are examples of the method that may be provided for density estimation. Other \code{method}s may be provided with the same arguments. Their return value must include the element \code{logL}, an estimate of the log-density of \code{stat.obs}, and the element \code{isValid} with values \code{FALSE}/\code{TRUE} (or 0/1). The standard format for the return value is \code{unlist(c(attr(EDF,"par"),logL,isValid=isValid))}.
 

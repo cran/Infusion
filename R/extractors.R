@@ -220,8 +220,10 @@ simulate.SLik_j <- function(object, nsim = 1L,
     if (is.null(dim(missing))) given <- t(given) # ugly but needed "somewhere" before reaching the Py conversion
     .simulate.MAF(object$conddens,nsim=nsim, given=given)
   } else if (inherits(object$jointdens,"dMclust")) {
-    statdens_h0 <- .conditional_mclust(object$jointdens, given=given, expansion=1) 
-    do.call("sim", c(statdens_h0[c("modelName", "parameters")],list(n=nsim)))[,-1,drop=FALSE] #matrix
+    statdens_h0 <- .conditional_dMclust(object$jointdens, given=given, expansion=1, using=object$using) 
+    if (object$using=="mclust") {
+      do.call("sim", c(statdens_h0[c("modelName", "parameters")],list(n=nsim)))[,-1,drop=FALSE] #matrix
+    } else .simVVV_rmvnorm_or_t(parameters=statdens_h0$parameters,n=nsim, use_rmvt=FALSE)[,-1,drop=FALSE] #matrix
   } else if (inherits(object$gllimobj,"gllim")) {
     .gllim.condsimul.stats(object$gllimobj, RGPpars=given, size=nsim, colTypes=object$colTypes, cbind.=FALSE)
   } 

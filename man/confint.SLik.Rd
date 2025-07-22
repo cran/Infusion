@@ -14,11 +14,12 @@
 }
 \usage{
 allCIs(object, level=0.95, verbose=TRUE, ...)
-\method{confint}{SLik_j}(object, parm, level=0.95, verbose=interactive(), fixed=NULL,
-                         which=c(TRUE,TRUE), nsim=0L, reset=TRUE, 
-                         cluster_args=NULL, nb_cores=NULL, type="perc",...)
-\method{confint}{SLik}(object, parm, level=0.95, verbose=interactive(), fixed=NULL, 
-                       which=c(TRUE,TRUE), ...)
+\method{confint}{SLik_j}(object, parm, level = 0.95, verbose = interactive(), 
+                         fixed = NULL, which = c(TRUE,TRUE), nsim = 0L, 
+                         reset = NULL, cluster_args = NULL, nb_cores = NULL,
+                         type= if (nsim>1L) {"perc"} else NULL, ...)
+\method{confint}{SLik}(object, parm, level = 0.95, verbose = interactive(), 
+                       fixed = NULL, which = c(TRUE,TRUE), ...)
 %\method{confint}{SLikp}(object, parm,
 %                       level=0.95, verbose=interactive(),
 %                       fixed=NULL,which=c(TRUE,TRUE),...)
@@ -52,16 +53,23 @@ Boolean: Whether to use any previously computed distribution (see Details) or no
 Passed to parallelization wrappers such as \code{\link[spaMM]{dopar}}.
 }
    \item{type}{
-Character vector, ignored if \code{nsim} = 0: bootstrap CI type(s). Possible types are \code{"norm", "basic",  "perc"} (as handled by \code{\link[boot]{boot.ci}}), and \code{"Bartlett"} (where the interval bounds are defined by threshold values of the likelihood ratio statistics modified using a Bartlett correction).
+Character vector: bootstrap CI type(s). Possible types are \code{"norm", "basic",  "perc"} (as handled by \code{\link[boot]{boot.ci}}), and \code{"Bartlett"} (where the interval bounds are defined by threshold values of the likelihood ratio statistics modified using a Bartlett correction).
 }
   \item{\dots}{
 further arguments passed to or from other methods. \code{allCIs} passes them to \code{confint}, so that, e.g.,  \code{nsim} can be passed through the \ldots. \code{confint} passes them to parallelization wrappers such as \code{\link[spaMM]{dopar}}.
 }
 }
 \details{
-\code{confint.SLik_j} results are stored in the \code{object} (until the next \code{refine}), including the result of the bootstrap simulations if it was performed. This distribution may then be reused by a next call to \code{confint} for the same \code{parm} if \code{reset=FALSE}. The default is however to recompute the distribution (\code{reset=TRUE}).
+\code{confint.SLik_j} results are stored in the \code{object} (until the next \code{refine}), 
+including the result of the bootstrap simulation if it was performed. 
+This distribution may then be reused by a next call to \code{confint} for the same \code{parm} 
+if \code{reset=FALSE}. 
+The default \code{reset} value is set such that the bootstrap distribution is recomputed 
+only if \code{nsim} differs from the the stored number of simulations.
 
-Bootstrap CIs computed using \code{boot.ci} are stored as distinct elements of the return list (see Value). However, for the \code{"Bartlett"} type of CI, the \code{interval} element of the return value is modified. 
+Bootstrap CIs computed using \code{boot.ci} are stored as distinct elements 
+of the return list (see Value). However, for the \code{"Bartlett"} type of CI, 
+the \code{interval} element of the return value is modified. 
 
 }
 \value{

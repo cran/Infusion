@@ -12,9 +12,9 @@ confint.SLik <- function(object, parm, ## parm is the parameter which CI is soug
 
 # experimental; proved insuficient
 .newdata_from_pardens_clu_means <- function(object, given) {
-  if (inherits(object$jointdens,"Mclust")) { 
-    conddens <- .conditional_mclust(object$pardens,# fittedPars=object$colTypes$fittedPars ,
-                                    given=given, expansion=1)
+  if (inherits(object$jointdens,"dMclust")) { 
+    conddens <- .conditional_dMclust(object$pardens,# fittedPars=object$colTypes$fittedPars ,
+                                    given=given, expansion=1, using=object$using)
     means <- conddens$parameters$mean # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
   } else {
     conddens <- .conditional_Rmixmod(object$pardens, given=given, expansion=1) 
@@ -34,9 +34,9 @@ confint.SLik <- function(object, parm, ## parm is the parameter which CI is soug
                                       profiledNames, # in the default method (max_conddens=FALSE) this only serves to select the returned parameters
                                       plower, pupper,
                                       newobs=NULL) {
-  if (inherits(object$jointdens,"Mclust")) { 
-    condpardens <- .conditional_mclust(object$pardens, # fittedPars=object$colTypes$fittedPars ,
-                                       given=given, expansion=1)
+  if (inherits(object$jointdens,"dMclust")) { 
+    condpardens <- .conditional_dMclust(object$pardens, # fittedPars=object$colTypes$fittedPars ,
+                                       given=given, expansion=1, using=object$using)
     means <- t(condpardens$parameters$mean) # use predictions in mean of each Gaussian component to define initial value of search of maximum of the density
   } else if (inherits(object$gllimobj,"gllim")) { 
     # we want the means of the conddens given 'given' , a nclu * length(fittedPars) matrix
@@ -127,7 +127,7 @@ profile.SLik <- function(fitted,...) profile.SLik_j(fitted=fitted,...) ## no nee
       if (inherits(object,"SLik_j")) {
         init <- .safe_init(object,given = v[parm], plower=plower,pupper=pupper,more_inits=object$MSL$MSLE)
       } else init <- object$MSL$MSLE[profiledNames]
-      optr <- .safe_optim(init, plogL, lower=plower, upper=pupper, LowUp=list(), verbose=FALSE, object=object,
+      optr <- .safe_optim(init, plogL, lower=plower, upper=pupper, verbose=FALSE, object=object,
                           neg_ineq_constrfn=neg_ineq_constrfn)
       if(return.optim) {
         optr$value <- - optr$objective 

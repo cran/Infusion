@@ -91,29 +91,34 @@
   conddens@parameters@mean <- MEAN[,For,drop=FALSE] # resizes, but will be modified
   condprop <- conddens@parameters@proportions
   for (clu_it in seq_len(nbCluster)) {
-    # In the ricker example, a number of simulations are extinctions of the population. This creates a proba mass
-    # of (projected) summstats, and the sig22 block is the zero matrix => regularize has no effect.
-    # The (log) condprop 'should' then be (log)(0). So we first compute it.
-    # Actually it is not certain that condprop will be zero, so check is not perfect (___F I X M E___) although it is effective. 
     COV <- conddens@parameters@variance[[clu_it]]
     colnames(COV) <- rownames(COV) <- colNames
     mean2 <- MEAN[clu_it,givenNames]
     sig22 <-  COV[givenNames,givenNames,drop=FALSE]
-    condprop[clu_it] <- log(condprop[clu_it])+dmvnorm(t(given), # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
-                                                      mean2, sigma= sig22, log=TRUE)
-    if (condprop[clu_it]> -46) { # approx log(1e-20)
+    rhs <- try(solve(sig22,given-mean2), silent=TRUE)
+    if (inherits(rhs,"try-error")) {
+      COV  <- regularize(COV)
+      sig22 <-  COV[givenNames,givenNames,drop=FALSE]
       rhs <- try(solve(sig22,given-mean2), silent=TRUE)
-      if (inherits(rhs,"try-error")) {
-        sig22  <- regularize(sig22)
-        rhs <- solve(sig22,given-mean2)
-      }
+    } 
+    # In the ricker example, a number of simulations are extinctions of the population. This creates a proba mass
+    # of (projected) summstats, and the sig22 block is the zero matrix => regularize has no effect.
+    if (inherits(rhs,"try-error")) { 
+      if (nbCluster > 1L) {
+        # if the sig22 block is the zero matrix, the cog_cond_proportion should be log(0)....
+        condprop[clu_it] <- log(condprop[clu_it]) + 
+          dmvnorm(t(given), mean2, sigma= sig22, log=TRUE) # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
+      } else condprop  <- 1
+      # probably irrelevant, but let us keep a clean structure:
+      conddens@parameters@mean[clu_it,] <- MEAN[clu_it,For]
+      conddens@parameters@variance[[clu_it]] <- COV[For,For,drop=FALSE] 
+    } else {
+      condprop[clu_it] <- log(condprop[clu_it]) + 
+        dmvnorm(t(given), mean2, sigma= sig22, log=TRUE) # dmvnorm() tests is.vector(x) which returns FALSE if x has attributes other than names.
       sig12 <-  COV[For,givenNames,drop=FALSE]
       conddens@parameters@mean[clu_it,] <- MEAN[clu_it,For] + sig12 %*% rhs
       sig11 <- COV[For,For,drop=FALSE]
       conddens@parameters@variance[[clu_it]] <- expansion* (sig11 - sig12 %*% solve(sig22,t(sig12))) 
-    } else { # probabily irrelevant, but let us keep a clean structure:
-      conddens@parameters@mean[clu_it,] <- MEAN[clu_it,For]
-      conddens@parameters@variance[[clu_it]] <- COV[For,For,drop=FALSE] 
     }
   }
   maxlog <- max(condprop)
@@ -140,10 +145,6 @@
   For <- setdiff(colNames,givenNames) 
   condprop <- prop <- conddens@parameters@proportions
   for (clu_it in seq_len(nbCluster)) {
-    # In the ricker example, a number of simulations are extinctions of the population. This creates a proba mass
-    # of (projected) summstats, and the sig22 block is the zero matrix => regularize has no effect.
-    # The (log) condprop 'should' then be (log)(0). So we first compute it.
-    # Actually it is not certain that condprop will be zero, so chekc is not perfect (___F I X M E___) although it is effective. 
     COV <- conddens@parameters@variance[[clu_it]]
     colnames(COV) <- rownames(COV) <- colNames
     mean2 <- MEAN[clu_it,givenNames]
@@ -167,8 +168,9 @@
 }
 
 
-.conditional_mclust <- function(jointdens, given,
-                                expansion=Infusion.getOption("expansion")) { # expansion=1 to get the conditional distribution
+.conditional_dMclust <- function(jointdens, given,
+                                expansion=Infusion.getOption("expansion"),
+                                using) { # expansion=1 to get the conditional distribution
   nbCluster <- jointdens$G
   conddens <- jointdens
   MEAN <- conddens$parameters$mean 
@@ -209,9 +211,11 @@
                                            sigma=sigma11, scale=sigma11) # was sigmasq previously to v2.1.129. also in sigma2decomp call. Something to check...
     }
   } else {
-    conddens$parameters$variance <- .do_call_wrap("sigma2decomp", 
-                                                  list(sigma=sigma11,tol=-1), # tol to avoid a simplification in the structure of $orientation that may hit a but in mclust...
-                                                  pack="mclust") 
+    if (using=="mclust") {
+      sigma2decomp <- .get_wrap("sigma2decomp", pack="mclust")
+      conddens$parameters$variance <- sigma2decomp(sigma=sigma11,tol=-1) # tol to avoid a simplification in the structure of $orientation that may raise a bug in mclust...
+    } else conddens$parameters$variance <- .sigma2decomp(sigma=sigma11)
+    
   }
   if (conddens$modelName=="VVV") {
     cholsigma <- array(0,dim=dim(sigma11))
@@ -221,8 +225,33 @@
   return(conddens)
 }
 
+.sigma2decomp <- function(sigma) {
+  dimSigma <- dim(sigma)
+  d <- dimSigma[1]
+  l <- length(dimSigma)
+  if (l == 2) {
+    G <- 1
+    sigma <- array(sigma, c(dimSigma, 1))
+  } else G <- dimSigma[3]
+  decomp <- list(d = d, G = G, scale = rep(0, G), 
+                 shape = matrix(0, d, G), orientation = array(0, c(d, d, G)))
+  for (k in 1:G) {
+    ev <- eigen(sigma[, , k], symmetric = TRUE)
+    temp <- log(ev$values)
+    temp[!is.finite(temp)] <- 0
+    logScale <- sum(temp)/d
+    decomp$scale[k] <- exp(logScale)
+    decomp$shape[, k] <- exp(temp - logScale)
+    decomp$orientation[, , k] <- ev$vectors
+  }
+  decomp$modelName <- "VVV"
+  decomp$sigma <- sigma
+  orderedNames <- c("sigma", "d", "modelName", "G", "scale", 
+                    "shape", "orientation")
+  return(decomp[orderedNames])
+}
 
-.marginalize_mclust <- function(jointdens, colNames, For, over) {
+.marginalize_dMclust <- function(jointdens, colNames, For, over, using) {
   nbCluster <- jointdens$G
   margdens <- jointdens
   margdens$data <- margdens$data[,For, drop=FALSE]
@@ -238,9 +267,10 @@
       variance <- list(modelName="V", d=1, G=length(COV), sigma=COV, scale=COV) 
     }
   } else {
-    variance <- .do_call_wrap("sigma2decomp", 
-                                                  list(sigma=COV,tol=-1), # tol to avoid a simplification in the structure of $orientation that may hit a but in mclust...
-                                                  pack="mclust") 
+    if (using=="mclust") {
+      sigma2decomp <- .get_wrap("sigma2decomp", pack="mclust")
+      variance <- sigma2decomp(sigma=COV,tol=-1) # tol to avoid a simplification in the structure of $orientation that may raise a bug in mclust...
+    } else variance <- .sigma2decomp(sigma=COV)
     # => this loses the names on the sigma's...
     dimnames( variance$sigma) <- list(For, For, NULL)
     if (margdens$modelName=="VVV") {
@@ -250,7 +280,7 @@
     }
   }
   margdens$parameters$variance <- variance
-  # Not necess useful here, but following thesamelogic as in .conditional_mclust():
+  # Not necess useful here, but following the same logic as in .conditional_dMclust():
   margdens$modelName <- variance$modelName
   return(margdens)
 }
@@ -300,6 +330,7 @@
       if (inherits(resu,"try-error")) {
         utils::dump.frames(dumpto = "latest.solve_t_cholfn.dump", 
                            include.GlobalEnv = TRUE, to.file=TRUE ) 
+        # ?_____F I X M E____ the next stop() seems to hang when options(error=recover)
         stop("solve(t(chol(mat))) failed in .solve_t_cholfn. See latest.solve_t_cholfn.dump.")
       }
     } else resu <- solve(t(chol(mat)))
@@ -307,21 +338,64 @@
   return(structure(resu,logdet=sum(log(diag(resu)))))
 }
 
-seq_nbCluster <- function(nr) {do.call(Infusion.getOption("seq_nbCluster"), list(nr=nr))}
+.nbClu_pow_rule <- function(nr, nc) { 
+  version <- as.package_version(Infusion.getOption("version"))
+  if (version < "2.2.4") { 
+    (ceiling(nr^0.31))
+  } else if (version < "2.2.5") { # 2.2.4.x versions
+    (ceiling(nr^0.30))
+  } else if (version < "2.2.12") { 
+    if (nr < 8001L) { # npar \leq 3
+      (ceiling(nr^0.30))
+    } else if (nr > 17000L) { # npar > 6
+      (ceiling(nr^0.31))
+    } else (ceiling(nr^(0.30+(nr-8000)/900000))) # denom = 100*(17000-8000)
+  } else if (version < "2.2.17") { 
+    # approaches 0.31 from below, with 0.29 for 4 cols (2 pars) and 5000 rows
+    (ceiling(nr^(0.31-0.08/nc)))
+  } else {
+    # Version consistent with simuls for two publications
+    if (nc < 8L) { # npar \leq 3
+      # approaches 0.31 from below, with 0.29 for 4 cols (2 pars) and 5000 rows
+      (ceiling(nr^(0.31-0.08/nc)))
+    } else ceiling(nr^0.31)
+  }   
+}
 
-get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata), 
-                                nbCluster=seq_nbCluster(nr), verbose=TRUE) { # data must be the mixmod data
-  maxnb <- do.call(.Infusion.data$options$maxnbCluster, list(nr=nr,nc=nc))
-  maxnb <- max(maxnb,1L) # handles 0L
-  if (any(nbCluster> maxnb) && verbose) {
-    message(paste0("Gaussian mixture modelling constrained to at most ", 
-                   maxnb," clusters by the number of columns."))
-    if (identical(attr(nbCluster,"max"),TRUE)) { # then nbCluster was seq_nbCluster ... hence:
+.maxnbClu_cluPars <- function(nr, nc, ratio) { 
+  (nr+ratio)%/%(nc*(nc+3L)*ratio/2L+ratio) 
+}
+
+seq_nbCluster <- function(nr, # often called only with nr argument
+                          nc=(nr/500+2)/3) { # The doc says it is only a fn of nr
+  nbClu_pow_rule <- Infusion.getOption("nbClu_pow_rule_fn")
+  maxClu <- nbClu_pow_rule(nr=nr, nc=nc)
+  seq(maxClu)
+}
+
+# This combines the seq_nbCluster() rule based on power of n
+# and the options$maxnbCluster based on the number of parameters
+get_nbCluster_range <- function(projdata, # data must be only those for mixture modelling
+                                nr= nrow(projdata), nc=ncol(projdata), 
+                                nbCluster=seq_nbCluster(nr, nc), # the (essentially) ^0.31 rule
+                                verbose=TRUE) { 
+  if (missing(nc) && "cumul_iter" %in% colnames(projdata)) nc  <-  nc-1L
+  maxnb <- do.call(.Infusion.data$options$maxnbCluster, list(nr=nr,nc=nc)) # the rule from nbClu
+  if (maxnb<1L) {
+    warning(paste("Only",nr,"samples in reference table: errors may result."),
+            immediate. = TRUE)
+    maxnb <- nbCluster <- 1L
+  }  
+  if (any(nbCluster> maxnb)) {
+    if (verbose) {
+      message(paste0("Gaussian mixture modelling constrained to at most ", 
+                     maxnb," clusters by the number of columns."))
+    }
+    if (identical(attr(nbCluster,"max"),TRUE)) { 
+      # as possibly given by refine_nbCluster() result or by processing identical(nbCluster,"max"). Then:
       maxnb
     } else return(nbCluster[nbCluster<=maxnb])
-  } else if (identical(attr(nbCluster,"max"),TRUE)) {
-    max(nbCluster)
-  } else nbCluster 
+  } else nbCluster # if identical(attr(nbCluster,"max"),TRUE)} then nbCluster is already expected to be single max value.
 }
 
 .data_autopsy <- function(data, stat.obs) {
@@ -375,7 +449,8 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
       utils::dump.frames(dumpto = "latest.infer_SLik_joint.dump", to.file=TRUE ) 
       if (FALSE) { ## older code; maybe still useful for devel though debug(.densityMixmod)...
         locarglist$strategy <- .Infusion.data$options$get_mixModstrategy(nc=ncol(locarglist$data))
-        jointdens <- try(.do_call_wrap("mixmodCluster",locarglist),silent = TRUE)
+        mixmodCluster <- .get_wrap("mixmodCluster")
+        jointdens <- try(do_call(mixmodCluster,locarglist),silent = TRUE)
         jointdens <- .get_best_mixmod_by_IC(jointdens)
       }
     }
@@ -393,7 +468,9 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
                           nbCluster) {
   if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
   cat_xpctd_nbClu <- verbose$most && length(locnbCluster)==1L
-  models <- .do_call_wrap("mixmodGaussianModel",list(listModels=Infusion.getOption("mixmodGaussianModel")))
+  
+  mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
+  models <- mixmodGaussianModel(listModels=Infusion.getOption("mixmodGaussianModel"))
   if (FALSE && length(locnbCluster)==1L && locnbCluster==1L) {
     # The idea is to allow a modeling by two clusters with identical 'orientation' (identical D_k's)
     # when two unconstrained clusters is still not 'safely' possible  
@@ -405,8 +482,10 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
     if (3L *nrow(data)> (nc+1L)*(nc+2L)) { # threshold ~(3/2) * dfs of the constrainedmodel with two clusters 
       locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=2L, 
                          seed=Infusion.getOption("mixmodSeed") , 
-                         models=.do_call_wrap("mixmodGaussianModel",
-                                              list(listModels="Gaussian_pk_Lk_D_Ak_D")))
+                         models={
+                           mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
+                           models <- mixmodGaussianModel(listModels="Gaussian_pk_Lk_D_Ak_D")
+                         })
     }
   } else {
     locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
@@ -437,7 +516,7 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
     pardens <- try(do.call(".densityMixmod",c(locarglist,list(stat.obs=stat.obs))),silent = TRUE)
     if (inherits(pardens,"try-error")) {
       # ignore any non-default infer_SLik_joint(.,nbCluster) argument
-      locarglist$nbCluster <- get_nbCluster_range(projdata=data)
+      locarglist$nbCluster <- get_nbCluster_range(projdata=data, nc=length(fittedPars), verbose=verbose$most)
       pardens <- do.call("mixmodCluster",locarglist)
       pardens <- .get_best_mixmod_by_IC(pardens) 
     }                               
@@ -465,7 +544,7 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
                             stat.obs,
                             logLname=Infusion.getOption("logLname"), ## not immed useful
                             Simulate=attr(data,"Simulate"), ## may be NULL
-                            nbCluster=seq_nbCluster(nr=nrow(data)),
+                            nbCluster=seq_nbCluster(nr=nrow(data), nc=ncol(data)),
                             using=Infusion.getOption("mixturing"),
                             verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                          pedantic=FALSE,
@@ -551,6 +630,7 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
   isVar_Pars <- apply(data[,allPars,drop=FALSE], 2L, function(v) length(unique(range(v)))>1L)
   fittedPars <- names(which(isVar_Pars))
   inferredVars <- c(fittedPars, latentVars) # actual pars and latent variables
+  nc <- length(c(fittedPars,inferredVars))
   fixedPars <- names(which( ! isVar_Pars))
   # Syntax to remove non-essential attributes otherwise inherited from the data:
   fixedPars <- data.frame(as.matrix(data[1L,fixedPars,drop=FALSE])) ## has both names and values
@@ -561,39 +641,74 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
   if (using=="mafR") {
     message('using="mafR" is interpreted as ="MAFmix".')
     using <- "MAFmix"
+  } else if (tolower(using)=="mclust" && using != "mclust") {
+    message('using="',using,'" is interpreted as ="mclust".')
+    using <- "mclust"
+  } else if (tolower(using)=="emcluster" && using != "EMCluster") {
+    message('using="',using,'" is interpreted as ="EMCluster".')
+    using <- "EMCluster"
   }
-  if ( ! length(grep("u.mafR|c.mafR",using))) {
+  
+  # in N_7from17:
+  #           seq-pow 1st-get_nbCluster_range() locnbCluster 
+  # 1st iter      1-9      1-9                   1-2
+  # 1st refine    1-9       9_max=TRUE            2
+  #
+  # in physa:
+  # 1st iter      1-5      1-5                   1-3
+  # 1st refine    1-5      1-5                   1-3
+  # so as described for simuls in ms the max rule is applied beyond the 1st iter
+  # but this is not the case for physa (because smaller reftable: seq-pow smaller: 
+  #  max rule not activated in refine_nbCluster())
+  
+  if ( ! length(grep("u.mafR|c.mafR",using))) { # For all clustering methods:
     nbCluster <- eval(nbCluster) # allowing evaluation of quoted default arg passed from refine.default()
-    if ( identical(nbCluster,"max")) nbCluster <- max(get_nbCluster_range(data))
+    if ( identical(nbCluster,"max")) nbCluster <- 
+        structure(max(get_nbCluster_range(data,nc=nc,verbose=verbose$most)),
+                  max=TRUE)
     # 
     if (! is.list(nbCluster)) nbCluster <- list(jointdens=nbCluster, pardens=nbCluster)
     locnbCluster <- nbCluster$jointdens
     if (length(locnbCluster)==1L) { # typical of RMSE bootstrap sample. Reduce by 1 or more
-      locnbCluster <- max(get_nbCluster_range(projdata=data, nbCluster=seq(locnbCluster)))
-    } else locnbCluster <- get_nbCluster_range(projdata=data, nbCluster=seq(max(locnbCluster))) # generate a more standard range
+      #      max here vvv
+      locnbCluster <- max(get_nbCluster_range(projdata=data, nc=nc, nbCluster=seq(locnbCluster), verbose=verbose$most))
+      #                                                                   max here vvv
+    } else locnbCluster <- get_nbCluster_range(projdata=data, nc=nc, nbCluster=seq(max(locnbCluster)), verbose=verbose$most) # generate a more standard range
   } else locnbCluster <- NULL
-  if (using=="mclust") {
-    if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
-    locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
-                       seed=Infusion.getOption("mixmodSeed"))
-    if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
-    jointdens <- .densityMclust(data=data[,c(inferredVars,statNames)],
-                                stat.obs,nbCluster=locnbCluster)
+  
+  if (using %in% c("EMCluster","mclust")) {
+    if (using=="EMCluster") {
+      if ( ! "package:EMCluster" %in% search()) stop("'EMCluster' should be loaded first.")
+      locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
+                         seed=Infusion.getOption("mixmodSeed"))
+      if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      jointdens <- .densityEMCluster(data=data[,c(inferredVars,statNames)],
+                                     stat.obs,nbCluster=locnbCluster, init=initParam)
+    } else {
+      if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
+      locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
+                         seed=Infusion.getOption("mixmodSeed"))
+      if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      jointdens <- .densityMclust(data=data[,c(inferredVars,statNames)],
+                                  stat.obs,nbCluster=locnbCluster)
+    }
     if (verbose$most) cat(paste0("; ",jointdens$G," clusters"))
     if (verbose$pedantic) if (jointdens$G==max(nbCluster$jointdens)) message("Inferred # of clusters= max of allowed range.")
     if ( length(latentVars)) {
       completedens <- jointdens 
-      jointdens <- .marginalize_mclust(completedens, colNames= c(inferredVars,statNames),
-                                       For=c(fittedPars,statNames), over=c(latentVars,statNames)) # marginalize over  latentvars
+      jointdens <- .marginalize_dMclust(completedens, colNames= c(inferredVars,statNames),
+                                       For=c(fittedPars,statNames), over=c(latentVars,statNames),
+                                       using=using) # marginalize over  latentvars
     } else completedens <- NULL
     if (marginalize) {
-      pardens <- .marginalize_mclust(jointdens, colNames= c(inferredVars,statNames),
-                              For=fittedPars, over=statNames)
+      pardens <- .marginalize_dMclust(jointdens, colNames= c(inferredVars,statNames),
+                                     For=fittedPars, over=statNames,
+                                     using=using)
       # defective but should be sufficient for prediction. Some garde-fou:
       #pardens@proba <- matrix(NA_real_)
     } else {
       pardens <- .densityMclust(data=data[,inferredVars],
-                                  stat.obs,nbCluster=nbCluster$pardens)
+                                stat.obs,nbCluster=nbCluster$pardens)
       if (verbose$most) cat(paste0("; parameter modeling: ",pardens$G," clusters"))
     }
     resu <- list(jointdens=jointdens, pardens=pardens, completedens=completedens,
@@ -639,6 +754,9 @@ get_nbCluster_range <- function(projdata, nr= nrow(projdata), nc=ncol(projdata),
     }
     resu$load_MAFs_info <- new.env(parent = emptyenv())
   } else {   # default: Rmixmod
+    if (using != "Rmixmod") {
+      message('using="',using,'" is interpreted as ="Rmixmod".')
+    }
     resu <-  .Rmixmodelize(
       data=data, locnbCluster=locnbCluster, inferredVars=inferredVars, 
       statNames=statNames, initParam=initParam, stat.obs=stat.obs, 
@@ -681,7 +799,7 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
                               stat.obs,
                               logLname=Infusion.getOption("logLname"), ## not immed useful
                               Simulate=attr(data,"Simulate"), ## may be NULL
-                              nbCluster=seq_nbCluster(nr=nrow(data)),
+                              nbCluster=seq_nbCluster(nr=nrow(data), nc=ncol(data)),
                               using=Infusion.getOption("mixturing"),
                               verbose=list(most=interactive(), ## must be explicitly set to FALSE in knitr examples
                                            pedantic=FALSE,
@@ -692,6 +810,13 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
                               is_trainset=NULL
 ) {
   mc <- match.call(expand.dots=TRUE) 
+  if ( ! is.null(constr_crits)) {
+    constrs <- apply(data,1L, function(v) all(eval(constr_crits, envir = as.list(v))<0))
+    if (any( ! constrs)) {  # check the initial reftable
+      message(paste0(sum( ! constrs)," samples removed because they do not obey 'constr_crits'."))
+      mc$data <- data[constrs,, drop=FALSE]
+    }
+  }
   mc[[1L]] <- get(".infer_SLik_joint", asNamespace("Infusion"), inherits=FALSE) 
   mc["latentVars"] <- list(attr(data,"latentVars")) # [] on mc seems to work as on a list
   resu <- eval(mc,envir = parent.frame())
@@ -811,7 +936,7 @@ predict.MixmodResults <- function(object, newdata,log=TRUE, solve_t_chol_sigma_l
   #   # so that previous test inherits(object$jointdens,"MAF") was FALSE
   #   somedens_value <- .predict_MAF_devel(object=object, X=X, tstat.obs=tstat.obs, which=which)
   } else if (inherits(object$jointdens,"dMclust")) {
-    somedens_value <- .predict_SLik_j_mclust(object=object, X=X, tstat.obs=tstat.obs, log=log, which=which, 
+    somedens_value <- .predict_SLik_j_dMclust(object=object, X=X, tstat.obs=tstat.obs, log=log, which=which, 
                                         solve_t_chol_sigma_lists=solve_t_chol_sigma_lists)
   } else if (inherits(object$gllimobj,"gllim")) {
     somedens_value <- .get_dens_from_GMM.gllim(X=X, 
@@ -822,7 +947,7 @@ predict.MixmodResults <- function(object, newdata,log=TRUE, solve_t_chol_sigma_l
   somedens_value # logl or safe logl or RGPdens...
 }
 
-.predict_SLik_j_mclust <- function(
+.predict_SLik_j_dMclust <- function(
     object, X, tstat.obs, log, which, 
     solve_t_chol_sigma_lists=object$clu_params$solve_t_chol_sigma_lists,
     thr_info=.get_thr_info(object))  {
@@ -944,15 +1069,15 @@ predict.SLik_j <- function(
 
 confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is sought 
                          level=0.95, verbose=interactive(),fixed=NULL,which=c(TRUE,TRUE), 
-                         nsim=0L, # type="perc",
-                         reset=TRUE,
+                         nsim=0L, 
+                         reset=NULL,
                          cluster_args=NULL, nb_cores=NULL,
-                         type="perc", # NB "raw" bootstrap CI does not exist...
+                         type= if (nsim>1L) {"perc"} else NULL, # NB "raw" bootstrap CI does not exist...
                          ...) {
   ## 'Bartlett' requires à distribution of the LR stat (ecdf_2lr). 
   ## Some bootstrap computations only return an ecdf_t.
-  ## confint.SLik_j -> confintAll will use ecdf_2lr if present; (but mind default reset=TRUE)
-  ## confint.SLik_j -> boot.ci will use if ecdf_t is present.
+  ## confint.SLik_j -> confintAll will use ecdf_2lr if present;
+  ## confint.SLik_j -> boot.ci will use ecdf_t if present.
   ## ecdf_t mais be available from a previous confint.SLik_j(., nsim) computation 
   ##   that stored its result in the CI object;
   ## But ecdf_t may also be available from a previous .ecdf_2lr computation
@@ -980,22 +1105,23 @@ confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is so
   #                      parm=parm, prob=level, verbose=FALSE)$interval)
   # } 
   # 
+  if (is.null(object$bootCIenv)) {
+    errmess <- paste("SLik_j object has no 'bootCIenv' element.\n",
+                     "Was it created using an old version of Infusion?\n.",
+                     "If so, running MSL() on it may fix this issue.")
+    stop(errmess)
+  } else bootreps_list <- object$bootCIenv$bootreps_list
   if (nsim>1L) { # provide  ecdf_t, and ecdf_2lr if "Bartlett" in type.
-    
     # # next line may be useful only for devel hack calling confint.SLik_j on a non SLik_j method ?
     # if ( ! inherits(object,"SLik_j")) stop("Bootstrap CI computations are implemented only for objects of class 'SLik_j'.")
     
-    if (is.null(object$bootCIenv)) {
-      errmess <- paste("SLik_j object has no 'bootCIenv' element.\n",
-                       "Was it created using an old version of Infusion?\n.",
-                       "If so, running MSL() on it may fix this issue.")
-      stop(errmess)
-    }
     CIobject <- object$CIobject
     CIs <- CIobject$CIs
     if ("Bartlett" %in% type) { # then GET the necessary info. 
-      bootreps_list <- object$bootCIenv$bootreps_list
-      if (reset || is.null(ecdf_t <- bootreps_list[[parm]]$ecdf_t)) {
+      ecdf_t <- bootreps_list[[parm]]$ecdf_t
+      if (is.null(prev_nsim <- nrow(ecdf_t))) reset <- TRUE
+      if (NULLreset <- is.null(reset)) reset <- (nsim==prev_nsim)
+      if (reset) {
         MSLE <- object$MSL$MSLE
         # .ecdf_2lr() has MAF-handling code
         blob_2lr <- .ecdf_2lr(object, BGP=MSLE, h0_pars=parm,                       
@@ -1004,17 +1130,40 @@ confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is so
         bootreps_list[[parm]] <- blob_2lr
         assign("bootreps_list",bootreps_list,envir=object$bootCIenv)
         ecdf_t <- blob_2lr$ecdf_t
-      } else if (nrow(ecdf_t)!=nsim) message("Saved object used as reset=FALSE: 'nsim' argument ignored.")
+      } else if (verbose && NULLreset) message("Saved object used as 'reset' not set to TRUE: 'nsim' ignored.")
       ecdf_2lr <- bootreps_list[[parm]]$ecdf_2lr
-    } else { # GET ecdf_t (only)
-      if (reset || is.null(ecdf_t <- .get_ci_info(CIs, parm)$ecdf_t)) {
+    } else { # GET ecdf_t (only) # not bartlett
+      ecdf_t <- .get_ci_info(CIs, parm)$ecdf_t
+      if (is.null(prev_nsim <- nrow(ecdf_t))) reset <- TRUE
+      if (NULLreset <- is.null(reset)) reset <- (nsim==prev_nsim)
+      if (reset) {
         ecdf_t <- .wrap_calc_ecdf_t(object=object, parm=parm, nsim=nsim, 
                                     cluster_args=cluster_args, nb_cores=nb_cores, ...)
-      } else if (length(ecdf_t)!=nsim) message("Saved object used as reset=FALSE: 'nsim' argument ignored.")
+      } else if (length(ecdf_t)!=nsim && verbose && NULLreset) message("Stored object used as 'reset' not set to TRUE: 'nsim' ignored.")
       ecdf_2lr <- NULL
     }
     ## ecdf_t is a 1-col matrix
-  } else ecdf_t <- ecdf_2lr <- NULL
+  } else { # nsim=0L
+    if ("Bartlett" %in% type) { # but !nsim : look for stored results and warn if they are missing
+      ecdf_t <- bootreps_list[[parm]]$ecdf_t
+      prev_nsim <- NROW(ecdf_t)
+      if (prev_nsim) {
+        if (verbose) message(paste("Stored Bartlett bootstrap result is used, with",prev_nsim,"replicates."))
+      } else warning("No stored Bartlett bootstrap result is available. Please specify 'nsim'.")
+      ecdf_2lr <- bootreps_list[[parm]]$ecdf_2lr
+    } else if ("perc" %in% type) {
+      ecdf_t <- .get_ci_info(CIs, parm)$ecdf_t
+      prev_nsim <- NROW(ecdf_t)
+      if (prev_nsim) {
+        if (verbose) message(paste("Stored bootstrap result is used, with",prev_nsim,"replicates."))
+      } else warning("No stored bootstrap result is available. Please specify 'nsim'.")
+      ecdf_2lr <- NULL
+    } else ecdf_t <- ecdf_2lr <- NULL
+  }
+  
+  ### Find the bounds using info available, incl. optional Bartlett bootstrap info,
+  ### possibly new level info...
+  ### This means this is called even if a boot.ci is only requested by the user (___F I X M E___? tricky? First CI comput ?)
   # if ( ( ! tryVM) || inherits(ci,"try-error")) {
     ci <- .confintAll(object=object, parm=parm, ## parm is the parameter whose CI is sought 
                 givenmax = object$MSL$maxlogL,
@@ -1024,7 +1173,10 @@ confint.SLik_j <- function(object, parm, ## parm is the parameter which CI is so
                 verbose=verbose,fixed=fixed,which=which, 
                 cluster_args=cluster_args, nb_cores=nb_cores,...)
     #
-    if ( ! is.null(ecdf_t) && length(bootCItype <- setdiff(type,"Bartlett"))  ) {
+    if ( ! is.null(ecdf_t)  && # the most recent one
+         # Bartlett results not stored in $CIobject$CIs but in $boot*CI*env$bootreps_list
+         length(bootCItype <- setdiff(type,"Bartlett"))  
+       ) {
       ci$ecdf_t <- ecdf_t
       ci$bootCI <- boot.ci(
         boot.out = list(t=ecdf_t, t0=object$MSL$MSLE[parm], R=nrow(ecdf_t), sim="parametric"), 
@@ -1215,9 +1367,16 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
   }
   trypoints <- trypoints[inLOWUP,,drop=FALSE]
   if (nrow(trypoints) && ! is.null(constr_crits <- object$constr_crits)) {
-    obeys_par_constr <- apply(as.data.frame(trypoints),1L, function(v) all(eval(constr_crits, envir = as.list(v))<0))
+    obeys_par_constr <- apply(as.data.frame(trypoints),1L, 
+                              function(v) all(eval(constr_crits, envir = as.list(v))<0))
     trypoints <- trypoints[obeys_par_constr,,drop=FALSE]
-  }
+    # if ( ! nrow(trypoints)) {
+    #   warning("No point satisfies 'constr_crits' constraints.")
+    # }
+  } # else if ( ! nrow(trypoints)) {
+    # warning("No point within box constraints.")
+  # }
+  
   trypoints
 }
 
@@ -1239,7 +1398,8 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
   trypoints
 }
 
-.simVVV_rmvt <- function(parameters, n, seed = NULL, ...) {
+# hastily extended from pre-existing .simVVV_rmvt to replace mclust::sim
+.simVVV_rmvnorm_or_t <- function(parameters, n, seed = NULL, use_rmvt, ...) {
   if (!is.null(seed)) 
     set.seed(seed)
   mu <- as.matrix(parameters$mean)
@@ -1258,42 +1418,40 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
   x <- matrix(0, n, d)
   for (k in 1:G) {
     m <- ctabel[k]
-    sigma <- parameters$variance$sigma[,,k] # for 1x1 matrix drop=FALSE => D array, vs default drops all dims, hence
-    if (is.null(dim(sigma))) dim(sigma) <- c(1L,1L) # ugly...
-    if (m>0) x[clabels == k, ] <- rmvt(n=m, 
-                              delta= mu[, k], 
-                              sigma= sigma)
+    if (m>0) {
+      sigma <- parameters$variance$sigma[,,k] # for 1x1 matrix drop=FALSE => D array, vs default drops all dims, hence
+      if (is.null(dim(sigma))) dim(sigma) <- c(1L,1L) # ugly...
+      if (use_rmvt) {
+        x[clabels == k, ] <- rmvt(n=m, 
+                                  delta= mu[, k], 
+                                  sigma= sigma)
+      } else x[clabels == k, ] <- rmvnorm(n=m, 
+                                   mean= mu[, k], 
+                                   sigma= sigma)
+    }
   }
   dimnames(x) <- list(NULL, paste0("x", 1:d))
   structure(cbind(group = clabels, x), modelName = "VVV")
 }
 
-.sample_in_absol_constrs <- function(object, ceil_size, sampledPars,
+# unsort argument added bc { previous output ( ~ unsort=FALSE) points were ordered by cluster; 
+# The idiom being to sample() the required number of rows from the result, removing the structure.
+# But in non-idiomatic cases this could be misleading. }
+.sample_in_absol_constrs <- function(object, nsim, sampledPars,
                                      density, # should be sub-dimensional if there are givenpars
                                      givenpars=NULL,
                                      norm_or_t, # .wrap_rmvnorm or .wrap_rmvt 
-                                     seed=NULL
+                                     seed=NULL,
+                                     unsort # overriden for MAFs
                                      ) {
-  if (inherits(density,"dMclust")) {
-    if (identical(norm_or_t,.wrap_rmvt)) {
-      trypoints <- .simVVV_rmvt(parameters=density$parameters,n=ceil_size) #matrix
-    } else if (identical(norm_or_t,.wrap_rmvnorm)) {
-      trypoints <- do.call("sim", c(density[c("modelName", "parameters")],list(n=ceil_size))) #matrix
-    } else stop("Unhandled 'norm_or_t' value for dMclust object.")
-    trypoints <- trypoints[,-1,drop=FALSE]  # remove group column
-    if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nrow(trypoints)),,drop=FALSE]) # matrix
-    colnames(trypoints) <- c(sampledPars,names(givenpars)) # sim() does not keep track of param names
-  } else if (inherits(density,"gllim")) {
-    trypoints <- .simulate.gllimX(density, size=ceil_size, drop=TRUE, parNames=sampledPars)
-    if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nrow(trypoints)),,drop=FALSE]) # matrix
-  } else if (inherits(density,"MAF")) { # "mafR" variants
+  if (inherits(density,"MAF")) { # "mafR" variants
     if (attr(density,"which")=="I_postdens") { 
       givens <- givenpars[,object$colTypes$statNames, drop=FALSE] # expected to match t(get_from(object,"stat.obs"))
     } else givens <- givenpars 
-    trypoints <- .simulate.MAF(density, nsim=ceil_size, 
+    trypoints <- .simulate.MAF(density, nsim=nsim, 
                                given=givens, 
                                object=object) # ___F I X M E___? provide non-default batchsize, 
-                                              # fn of object's reftable dim and of py_handle's $gpu_memory as for the fit?
+    # fn of object's reftable dim and of py_handle's $gpu_memory as for the fit?
     fixed_here <- intersect(colnames(trypoints),names(givenpars))
     if (length(fixed_here)) {
       # Occurs in plot2Dprof in basic tests... 
@@ -1305,15 +1463,37 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
       # warning("Subperfect code for MAF in .sample_in_absol_constrs() with 'givenpars'.") # ____F I X M E____ it's still so despite the '#'
       for(st in fixed_here) trypoints[,st] <- givenpars[st] # QUICK PATCH
     } 
-  } else { # using="Rmixmod", or "devel" for pardens, instr_postdens or a conditional distrib in instr_postdens
-    trypoints <- .simulate.MixmodResults(density, size=ceil_size, drop=TRUE, seed=seed,
-                                         norm_or_t=norm_or_t) 
-    if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nrow(trypoints)),,drop=FALSE]) # matrix
+    unsort <- FALSE
+  } else { 
+    if (inherits(density,"dMclust")) {
+      if (identical(norm_or_t,.wrap_rmvt)) {
+        use_rmvt <- TRUE
+      } else if (identical(norm_or_t,.wrap_rmvnorm)) {
+        use_rmvt <- FALSE
+      } else stop("Unhandled 'norm_or_t' value for dMclust object.")
+      if (object$using=="mclust" && ! use_rmvt) {
+        trypoints <- do.call("sim", c(density[c("modelName", "parameters")],list(n=nsim))) #matrix
+      } else {
+        trypoints <- .simVVV_rmvnorm_or_t(parameters=density$parameters,n=nsim, 
+                                          use_rmvt=use_rmvt) #matrix
+      }
+      trypoints <- trypoints[,-1,drop=FALSE]  # remove group column
+      if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nsim),,drop=FALSE]) # matrix
+      colnames(trypoints) <- c(sampledPars,names(givenpars)) # sim() does not keep track of param names
+    } else if (inherits(density,"gllim")) {
+      trypoints <- .simulate.gllimX(density, size=nsim, drop=TRUE, parNames=sampledPars)
+      if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nsim),,drop=FALSE]) # matrix
+    } else  { # using="Rmixmod", or "devel" for pardens, instr_postdens or a conditional distrib in instr_postdens
+      trypoints <- .simulate.MixmodResults(density, size=nsim, drop=TRUE, seed=seed,
+                                           norm_or_t=norm_or_t) 
+      if ( ! is.null(givenpars)) trypoints <- cbind(trypoints, t(givenpars)[rep(1,nsim),,drop=FALSE]) # matrix
+    }
   }
   # For some time I've more or less assumed that parameter order would not matter;
   # but then in .safe_init I rbind() points that would then have different parameter orders:
   if ( ! is.null(givenpars)) trypoints <- trypoints[,object$colTypes$fittedPars,drop=FALSE] 
   trypoints <- .apply_par_constraints_LOWUP(trypoints, object=object, fittedPars=colnames(trypoints))
+  if (unsort) trypoints <- trypoints[sample(nrow(trypoints)),,drop=FALSE]
   trypoints
 }
 
@@ -1562,7 +1742,7 @@ get_workflow_design <- function(npar,
                                 final_reft_size=NULL,
                                 refine_blocksize=NULL,
                                 subblock_nbr=NULL,
-                                version=packageVersion("Infusion"),
+                                version=Infusion.getOption("version"),
                                 cumn_over_maxit=NULL,
                                 test_fac=NULL) {
   version <- as.package_version(version)
@@ -1694,7 +1874,8 @@ get_workflow_design <- function(npar,
       instr_postdens <- .conditional_Rmixmod(object$MGMjointdens, given=given, expansion=1)
     } else instr_postdens <- object$postdens
   } else if (inherits(object$jointdens,"dMclust")) {
-    instr_postdens <- .conditional_mclust(object$jointdens, given=given, expansion=1)
+    instr_postdens <- .conditional_dMclust(object$jointdens, given=given, expansion=1, 
+                                          using=object$using)
   } else if (inherits(object$gllimobj,"gllim")) {
     # warning("No implementation of instr_postdens for gllim clustering: using pardens.")
     fittedPars <- object$colTypes$fittedPars 
@@ -1747,9 +1928,9 @@ instr_densv
                                  ceil_size_blob, fittedPars, target_LR, 
                                  fill, 
                                  norm_or_t=.Infusion.data$options$norm_or_t) {
-  sample_instr_dens <- .sample_in_absol_constrs(object, ceil_size_blob$ceil_size, fittedPars, 
+  sample_instr_dens <- .sample_in_absol_constrs(object, nsim=ceil_size_blob$ceil_size, fittedPars, 
                                             density=instr_dens, 
-                                            norm_or_t=norm_or_t)
+                                            norm_or_t=norm_or_t, unsort=FALSE)
   if ( nrow(sample_instr_dens)) {
     instr_densv <- .calc_instr_densities(object, instr_dens, sample_instr_dens)
     pardensv <- predict(object,newdata = sample_instr_dens, which="parvaldens", constr_tuning=FALSE) # constr_tuning useless as pred_data satisfy constraints
@@ -1769,7 +1950,7 @@ instr_densv
     
     len_mg <- length(moregood)
     if (len_mg > fill) moregood <- moregood[sample(len_mg,size = fill)]
-  } else { # it oocurred... with mafR
+  } else { # it occurred... with mafR
     moregood <- c()
   }
   
@@ -1781,15 +1962,15 @@ instr_densv
                                 target_size, 
                                 verbose, target_LR) {
   if (inherits(object$gllimobj,"gllim")) {
-    trypoints <- .sample_in_absol_constrs(object, ceil_size_blob$ceil_size, fittedPars, 
+    trypoints <- .sample_in_absol_constrs(object, nsim=ceil_size_blob$ceil_size, fittedPars, 
                                           density=object$gllimobj, 
-                                          norm_or_t=.Infusion.data$options$norm_or_t)
+                                          norm_or_t=.Infusion.data$options$norm_or_t, unsort=FALSE)
   } else { # 
     trypoints <- .sample_in_absol_constrs(object, 
-                                          ceil_size_blob$ceil_size, # tried .../2: v2.1.113.1, N_7from17. Not better 
+                                          nsim=ceil_size_blob$ceil_size, # tried .../2: v2.1.113.1, N_7from17. Not better 
                                           fittedPars, 
-                                          density=object$pardens, 
-                                          norm_or_t=.Infusion.data$options$norm_or_t)
+                                          density=object$pardens, # instr dens as proposal
+                                          norm_or_t=.Infusion.data$options$norm_or_t, unsort=FALSE)
   }
   NROW_trypoints <- NROW(trypoints)
   ok <- (NROW_trypoints >= target_size/ceil_size_blob$freq_in_par_constrs)
@@ -1801,7 +1982,9 @@ instr_densv
   }
   
   if (NROW_trypoints) {
-    ## Selection of points ~uniformly in top of logl hill ('good' points)
+    ## Selection of points ~uniformly in top of logl hill ('good' points) + 'out'  points
+    # Uses above trypoints from the isntr density
+    # The instrumental posterior will be used in second step only if too many points are rejected.
     pardensv <- predict(object,trypoints,which="parvaldens") 
     weights_blob <- .calc_filltop_weights(object=object, trypoints=trypoints, 
                                           log_rel_weight_penal=pardensv, 
@@ -1903,35 +2086,45 @@ instr_densv
   RESU
 }
 
-.rparam_SLik_j_B_postdens <- function( # hack ASSUMING UNIFORM PRIOR
-  # tested with Rmixmod, likely pb with MAF
-    object, 
-    target_size=NULL,
-    fittedPars=object$colTypes$fittedPars,
-    verbose=FALSE,
-    ...
-    # level, # not used
-    # target_LR,
-    # maxit=10L,
-    # size_first_iter=.get_size_first_iter(object),
-    # safe #  .safe_optim vs nlminb in .ad_hoc_opt; NOT controlling predict(., which)
-    ### cluster_args=NULL
+## This is experimental, not used in any default procedure.
+# .HPDint() with default uniform prior incorporates a nicer way of sampling from the lik 
+# Previously named .rparam_SLik_j_B_postdens(), which had been tested with Rmixmod, likely pb with MAF.
+# To sample parameters in proportion to lik,
+# sample according to instrumental posterior
+# and perform rejection sampling according to 
+# lik/instr_post_dens =
+#   lik*instr_prior/(instr_post_dens*instr_prior) =
+# 1/instr_prior
+.rparam_SLik_j_like <- function( # 
+  object, 
+  target_size=NULL,
+  fittedPars=object$colTypes$fittedPars,
+  verbose=FALSE,
+  truncate_weights,
+  ...
+  # level, # not used
+  # target_LR,
+  # maxit=10L,
+  # size_first_iter=.get_size_first_iter(object),
+  # safe #  .safe_optim vs nlminb in .ad_hoc_opt; NOT controlling predict(., which)
+  ### cluster_args=NULL
 ) {
   ceil_size_blob <- .calc_ceil_size(object, target_size) # O(target_size/bnded_old_freq_full_rejection)
   if (verbose) cat("Target subblock size: ", target_size,"\n")
   
-  trypoints <- .sample_in_absol_constrs(object, ceil_size_blob$ceil_size, fittedPars, 
-                                        density=.get_instr_postdens(object), 
-                                        norm_or_t=.wrap_rmvnorm)
+  trypoints <- .sample_in_absol_constrs(object, nsim=ceil_size_blob$ceil_size, fittedPars, 
+                                        density=.get_instr_postdens(object), # this one is real instrumental prior
+                                        norm_or_t=.wrap_rmvnorm, unsort=FALSE)
   NROW_trypoints <- NROW(trypoints) 
-  if (NROW_trypoints) { # Penalize by instrumental prior density:
+  if (NROW_trypoints) { # Penalize the pardens sample by instrumental prior density:
+    # this will sample according to instrumental posterior dens/instrumental prior density = the logL (\propto posterior given uniform prior)
     pardensv <- predict(object,newdata = trypoints, which="parvaldens", constr_tuning=FALSE) # constr_tuning useless as pred_data satisfy constraints
     wei <- - pardensv
     # It suffice that one point has quite high weight (perhaps spuriously) to increase largely rejection proba of all other points,
     # => truncates high weights
     # NB this may results from pardens and postdens not deduced from a single joint distrib, 
-    # so possible artefact to corretc, but introduces other artefacts
-    if ( length(wei)>101L) {
+    # so possible artefact to correct, but introduces other artefacts
+    if ( truncate_weights && length(wei)>101L) {
       qs <- quantile(ecdf(wei),probs=c(0.01,0.99))
       wei <- pmin(wei,qs[2]) 
       wei <- pmax(wei,qs[1]) # not sur this one is useful
@@ -2026,23 +2219,23 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
         init <- .safe_init(object = fitted, given=c(value, fixed), plower, pupper,
                            more_inits=fitted$MSL$MSLE,
                            constr_crits=constr_crits) # does not account for eq_constrfn=eq_constrfn
-        optr <- .safe_optim(init[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), 
+        optr <- .safe_optim(init[profiledNames], plogL, lower=plower, upper=pupper, 
                             verbose=FALSE, object=fitted, neg_ineq_constrfn=neg_ineq_constrfn,
                             eq_constrfn=eq_constrfn, ...)
       } else optr <- .safe_optim(fitted$MSL$MSLE[profiledNames], plogL, lower=plower, upper=pupper, 
-                                 LowUp=list(), verbose=FALSE, object=fitted, 
+                                 verbose=FALSE, object=fitted, 
                                  neg_ineq_constrfn=neg_ineq_constrfn,
                                  eq_constrfn=eq_constrfn, ...)
     } else if (is.numeric(init)) { # else 'init' input argument must be user-provided vector including profiled pars 
       #Example is p <- profile(object, value=templateh0, init=init, which="safe") in SLRT() 
-      optr <- .safe_optim(init[profiledNames], plogL, lower=plower, upper=pupper, LowUp=list(), 
+      optr <- .safe_optim(init[profiledNames], plogL, lower=plower, upper=pupper, 
                           verbose=FALSE, object=fitted, neg_ineq_constrfn=neg_ineq_constrfn,
                           eq_constrfn=eq_constrfn,
                           ...)
     } else if (identical(init,"clu_means")) { # multiple optims, one from each clu mean. Could probably be removed.
       newdata <- .newdata_from_pardens_clu_means(fitted,value)
       OPT <- function(init) {.safe_optim(init[profiledNames], plogL, lower=plower, 
-                                         upper=pupper, LowUp=list(), verbose=FALSE, object=fitted, ...)}
+                                         upper=pupper, verbose=FALSE, object=fitted, ...)}
       optrS <- apply(newdata,1L, OPT)  
       optr <- optrS[[which.min(sapply(optrS,`[[`, i="objective"))]]
     }
@@ -2078,7 +2271,8 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
       infer_SLik_joint(boo,stat.obs=stat.obs, nbCluster=nbCluster_SVs, using=using,
                        verbose=list(most=FALSE,final=FALSE, constr_crits=constr_crits,
                                     latentVars=old_object$colTypes$latentVars)))
-  }
+
+      }
   densv
 }
 
@@ -2103,13 +2297,20 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
     nbCluster_SVs <- list(jointdens=object$jointdens@nbCluster,
                           pardens=object$pardens@nbCluster) # single values so that this exposes to clustering failure.
   } else if (inherits(simuland,"dMclust")) {
-    bootrepls <- replicate(boot_nsim, do.call("sim", c(simuland[c("modelName", "parameters")],
-                                                       list(n=nrow(object$logLs))))[,-1L],simplify=FALSE)
+    if (object$using=="mclust") {
+      bootrepls <- replicate(boot_nsim, 
+                             do.call("sim", c(simuland[c("modelName", "parameters")],
+                                                         list(n=nrow(object$logLs))))[,-1L],
+                             simplify=FALSE)
+    } else bootrepls <- replicate(boot_nsim, 
+                                  .simVVV_rmvnorm_or_t(parameters=simuland$parameters,
+                                                  n=nrow(object$logLs),use_rmvt=FALSE)[,-1L],
+                                  simplify=FALSE)
     nbCluster_SVs <- list(jointdens=object$jointdens$G,
                           pardens=object$pardens$G)
   } else if (inherits(simuland,"MAF")) { # using="mafR"
     bootrepls <- replicate(boot_nsim, expr = {
-      .simulate.MAF(simuland, nsim= nrow(object$logLs), given=NULL) # ____F I X M E____ incomplete call ?
+      .simulate.MAF(simuland, nsim= nrow(object$logLs), given=NULL) # (____F I X M E___) untested
     },
     simplify=FALSE)
     nbCluster_SVs <- list()

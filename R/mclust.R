@@ -1,12 +1,14 @@
-..densityMclust <- function(data,stat.obs,nbCluster=seq_nbCluster(nr=nrow(data))) {
+..densityMclust <- function(data,stat.obs,
+                            nbCluster,
+                            verbose) {
   # stat.obs useful for boundaries and to handle degenerate distributions:
-  nbCluster <- get_nbCluster_range(projdata=data, nbCluster=nbCluster)
+  nbCluster <- get_nbCluster_range(projdata=data, nbCluster=nbCluster, verbose=verbose) # primitive workflow (nc implicitly = # stats)
   statNames <- colnames(data)
   ## 
   blob <- .process_boundaries(data, stat.obs, boundaries=attr(stat.obs,"boundaries"))
   if ( ! nrow(blob$data)) { # ie if length(blob$goodrows)==0L in .process_boundaries()
     ## code has long been invalid, but not tested. See further comments on parallel code for .densityMixmod()
-    # This still ooks as an ugly patch since Rmixmod is potentially used in this mClust based function.
+    # This still looks as an ugly patch since Rmixmod is potentially used in this mClust based function.
     resu <- new(structure("dMixmod", package="Infusion")) # line individually OK; no 'data' nor 'nbCluster' slots
     resu@strategy <- NULL
     resu@varNames <- blob$varNames
@@ -22,24 +24,20 @@
     # 
     #  x <- mixmodCluster(as.data.frame(data),seq(2*log(nrow(data))),strategy = mixmodStrategy(seed=123))
     # statdoc of mixmod recommends ceiling(nrow(data)^0.3) and refers to Bozdogan93
+    Mclust <- .get_wrap("densityMclust",pack="mclust")
     if (length(nbCluster)==1L) {
-      resu <- suppressWarnings(.do_call_wrap("Mclust",
-                                             list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster,verbose=FALSE),
-                                             pack="mclust"))
+      resu <- suppressWarnings(Mclust(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster,verbose=FALSE))
       if (is.null(resu)) { ## If mclust fails bc of a singular gaussian component, it returns NULL...
         # try decreasing the number of clusters until mclust works
         for (nb in rev(seq_len(min(nbCluster)-1L))) {
-          resu <- suppressWarnings(.do_call_wrap("Mclust",
-                                                 list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nb,verbose=FALSE),
-                                                 pack="mclust"))
+          resu <- suppressWarnings(Mclust(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nb,verbose=FALSE))
           if ( ! is.null(resu) ) break
         }
       } 
     } else { 
       models <- vector("list",length(nbCluster))
-      for (it in seq_along(nbCluster)) models[[it]] <- .do_call_wrap("Mclust",
-                                                                     list(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster[it],verbose=FALSE),
-                                                                     pack="mclust")
+      for (it in seq_along(nbCluster)) models[[it]] <- 
+          Mclust(data=as.data.frame(data),modelNames=Infusion.getOption("mclustModel"), G=nbCluster[it],verbose=FALSE)
       resu <- .get_best_mclust_by_IC(models) 
     }
     if (resu$modelName=="VEV") { 
@@ -59,7 +57,7 @@
                       simuls_activeBoundaries=blob$simuls_activeBoundaries,
                       Sobs_activeBoundaries=blob$Sobs_activeBoundaries,
                       freq=blob$freq)
-    class(resu) <- c("dMclust", class(resu))
+    class(resu) <- c("dMclust", class(resu)) # presumably class is c("dMclust", "Mclust")
   }
   resu
 }
@@ -79,14 +77,12 @@
   return(cluObject[[which.min(AICs)]])
 }
 
-# Alternative to (mixmodCluster+selection by AIC), returns a dMixmod object 
-.densityMclust <- function(data,stat.obs,nbCluster=seq_nbCluster(nr=nrow(data)),
+# Alternative to (mixmodCluster+selection by AIC), returns a dMclust object 
+.densityMclust <- function(data,stat.obs,nbCluster,
                            modelNames=Infusion.getOption("mclustModel"), 
                            verbose=FALSE, plot=FALSE) {
-  # stat.obs useful for boundaries and to handle degenerate distributions:
-  nbCluster <- get_nbCluster_range(projdata=data, nbCluster=nbCluster)
-  ## 
   if ( ! length(nbCluster)) return(NULL)
+  # stat.obs useful for boundaries and to handle degenerate distributions:
   blob <- .process_boundaries(data, stat.obs, boundaries=attr(stat.obs,"boundaries")) # original role probably irrelevant
   #     but blob is used 
   if ( ! nrow(blob$data)) { # ie if length(blob$goodrows)==0L in .process_boundaries()
@@ -110,8 +106,9 @@
     }
     locarglist <- list(data=as.data.frame(data),modelNames=modelNames, 
                        G=nbCluster,verbose=verbose, plot=plot)
+    Mclust <- .get_wrap("densityMclust",pack="mclust")
     if (length(nbCluster)==1L) {
-      resu <- suppressWarnings(.do_call_wrap("Mclust", locarglist, pack="mclust"))
+      resu <- suppressWarnings(do.call(Mclust, locarglist))
       # resu is NULL when the fit failed,with a BIC=NA
       if ((inherits(resu,"try-error") || is.null(resu)) && # same tests as above, plus...
           length(nbCluster)==1L) { # Then we try any smaller size.
@@ -122,7 +119,7 @@
         }
         for (nb in rev(seq_len(min(nbCluster)-1L))) {
           locarglist$G <- nb
-          resu <- suppressWarnings(.do_call_wrap("Mclust", locarglist, pack="mclust"))
+          resu <- suppressWarnings(do.call(Mclust, locarglist))
           if ( ! (inherits(resu,"try-error") || is.null(resu))) break
         }
       } 
@@ -130,7 +127,7 @@
       models <- vector("list",length(nbCluster))
       for (it in nbCluster) {
         locarglist$G <- it
-        models[[it]] <- suppressWarnings(.do_call_wrap("Mclust", locarglist, pack="mclust"))
+        models[[it]] <- suppressWarnings(do.call(Mclust, locarglist))
       }
       resu <- .get_best_mclust_by_IC(models) 
     }
@@ -156,7 +153,6 @@
   }
   resu
 }
-
 
 
 predict.dMclust <- function(object,

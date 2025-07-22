@@ -133,7 +133,8 @@ projpath <- local({
     return(cores_info)
   }
 
-.eval_Sobs_densities <- function(method, object, cores_info, packages=NULL, stat.obs,logLname,
+.eval_Sobs_densities <- function(method, # old workflow: no method provided for EMCluster 
+                                 object, cores_info, packages=NULL, stat.obs,logLname,
                                  verbose # list
                                  ) {
   if (cores_info$nb_cores > 1L) {

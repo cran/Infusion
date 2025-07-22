@@ -7,7 +7,6 @@
 \alias{project.default}
 \alias{deforest_projectors}
 \alias{neuralNet}
-%- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Learn a projection method for statistics and apply it 
 }
@@ -44,30 +43,30 @@ deforest_projectors(object)
   The name of the parameter to be predicted, or a vector/matrix/list of matrices of summary statistics.  
 }
   \item{stats}{
-  Statistics from which the predictor is to be predicted 
+  Statistics from which the parameter is to be predicted 
 }
   \item{use_oob}{
-  Boolean: whether to use out-of-bag predictions for data used in the training set, when such oob predictions are available (i.e. for random forest methods). Default as controlled by the same-named package option, is TRUE. This by default involves a costly check on each row of the input \code{x}, whether it belongs to the training set, so it is better to set it to FALSE if you are sure \code{x} does not belong to the training set (for true data in particular). Alternatively the check can be bypassed if you are sure that \code{x} was used as the training set.
+  Boolean: whether to use out-of-bag predictions for data used in the training set, when such oob predictions are available (i.e. for random forest methods). Default as controlled by the same-named package option, is TRUE. This by default involves a costly check on each row of the input \code{x}, whether it belongs to the training set, so it is better to set it to FALSE if you are sure \code{x} does not belong to the training set (for true data in particular). Alternatively the check can be bypassed if you are sure that \code{x} was used as the training set, by setting \code{is_trainset=TRUE}.
 }
 \item{is_trainset}{
   Boolean. In a \code{project} call, set it to TRUE if \code{x} was used as the training set, to bypass a costly check (see \code{use_oob} argument). The same logic may apply in a \code{plot_proj} call, except that it is not immediately obvious for users whether the full reference table in an \code{object} was used as the training set, so trying to save time by setting \code{is_trainset=TRUE} requires more insight.
 }
   \item{data}{
-  A list of simulated empirical distributions, as produced by \code{\link{add_simulation}}, or a data frame with all required variables.
+  A data frame with all required variables, or, for the primitive workflow, a list of simulated empirical distributions, as produced by \code{\link{add_simulation}}.
 }
   \item{trainingsize, train_cP_size}{ Integers;
-  for most projection methods (excluding \code{"REML"} but including \code{"ranger"}) only  \code{trainingsize} is taken into account: it gives the maximum size of the training set (and is infinite by default for \code{"ranger"} method). If the \code{data} have more rows the training set is randomly sampled from it. For the \code{"REML"} method, \code{train_cP_size} is the maximum size of the data used for estimation of smoothing parameters, and \code{trainingsize} is the maximum size of the data from which the predictor is built given the smoothing parameters.
+  for most projection methods (excluding \code{"REML"} but including \code{"ranger"}), only  \code{trainingsize} is taken into account: it gives the maximum size of the training set, so that if the \code{data} have more rows than \code{trainingsize}, the training set is randomly sampled from it. For the \code{"REML"} method, \code{train_cP_size} is the maximum size of the data used for estimation of smoothing parameters, and \code{trainingsize} is the maximum size of the data from which the predictor is built given the smoothing parameters.
+  
+ \code{trainingsize} is infinite by default for \code{"ranger"} method.
 }
  \item{method}{
   character string: \code{"REML"}, \code{"GCV"}, or the name of a suitable projection function. The latter may be defined in another package, e.g. \code{"ranger"} or \code{"randomForest"}, or predefined by \verb{Infusion}, or defined by the user. See Details for predefined functions and for defining new ones. The default method is \code{"ranger"} if this package is installed, and \code{"REML"} otherwise. Defaults may change in later versions, so it is advised to provide an explicit \code{method} to improve reproducibility. 
  }
  \item{methodArgs}{
-   A list of arguments for the projection method. For \code{project.character}, the \code{ranger} method is run with some default argument if no \code{methodArgs} are specified. Beware that a NULL \code{methodArgs$splitrule} is interpreted as the \code{"extratrees"} \code{splitrule}, whereas in a direct call to \code{ranger}, this would be interpreted as the \code{"variance"} \code{splitrule}. For \code{project.default}, the only \code{methodArgs} element handled is \code{num.threads} passed to \code{predict.ranger} (which can also be controlled globally by \code{Infusion.options(nb_cores=.)}).   
-   
-   For other methods, \code{project} kindly (tries to) assign values to the required arguments if they are absent from \code{methodArgs}, according to the following rules:
-   
-   If \code{"REML"} or \code{"GCV"} methods are used (in which case \code{methodArgs} is completely ignored); or
-   
+   A list of arguments for the projection method. For \code{project.character}, the \code{ranger} method is run with some default argument if no \code{methodArgs} are specified. Beware that here, a NULL \code{methodArgs$splitrule} is interpreted as the \code{"extratrees"} \code{splitrule}, whereas in a direct call to \code{ranger}, this would be interpreted as the \code{"variance"} \code{splitrule}. For \code{project.default}, the only \code{methodArgs} element handled is \code{num.threads} passed to \code{predict.ranger} (which can also be controlled globally by \code{Infusion.options(nb_cores=.)}).   
+
+   If \code{"REML"} or \code{"GCV"} methods are used,  \code{methodArgs} is completely ignored. For other methods, \code{project} kindly (tries to) assign values to the required arguments, if they are absent from \code{methodArgs}, according to the following rules:
+
    if the projection method uses \code{formula} and \code{data} arguments (in particular if the formula is of the form 
    \code{response ~ var1 + var2 + ...}; otherwise the formula should be provided through \code{methodArgs}). This works 
    for example for methods based on \code{nnet}; or
@@ -92,18 +91,18 @@ Further arguments passed to or from other functions. Currently, they are passed 
 }
 }
 \details{
-  The preferred \code{project} method is non-parametric regression by (variants of) the random forest method as implemented in \pkg{ranger}. It is the default method, if that package is installed. Alternative methods have been interfaced as detailed below, but the functionality of most interfaces is infrequently tested. 
+  The preferred \code{project} method is non-parametric regression by (variants of) the random forest method as implemented in \pkg{ranger}. It is the default method, if that package is installed. Alternative methods have been interfaced as detailed below, but the functionality of most interfaces is infrequently or no longer tested. 
   
   By default, the ranger call through \code{project} will use the split rule \code{"extratrees"}, with some other controls also differing from the \pkg{ranger} package defaults. If the split rule \code{"variance"} is used, the default value of \code{mtry} used in the call is also distinct from the \pkg{ranger} default, but consistent with Breiman 2001 for regression tasks. 
 
-  Machine learning methods such as random forests overfit, \emph{except if} out-of-bag predictions are used. When they are not, the bias is manifest in the fact that using the same simulation table for learning the projectors and for other steps of the analyses tend to lead to too narrow confidence regions. This bias disappears over iterations of \code{\link{refine}} when the projectors are kept constant. \code{Infusion} avoid this bias by using out-of-bag predictions when relevant, when \code{ranger} and \code{randomForest} are used. But it provides no code handling that problem for other machine-learning methods. Then, users should cope with that problems, and at a minimum should not update projectors in every iteration (the \dQuote{\href{https://gitlab.mbb.univ-montp2.fr/francois/Infusion/-/blob/master/documents/InfusionIntro.pdf}{Gentle Introduction to Infusion} may contain further information about this problem}).       
+  Predictions by machine learning methods such as random forests overfit, \emph{except if} out-of-bag predictions are used. When they are not, the bias is manifest in the fact that using the same simulation table for learning the projectors and for other steps of the analyses tend to lead to too narrow confidence regions. This bias disappears over iterations of \code{\link{refine}} when the projectors are kept constant. \code{Infusion} avoid this bias by using out-of-bag predictions when relevant, when \code{ranger} and \code{randomForest} are used. But it provides no code handling that problem for other machine-learning methods. Then, users should cope with that problems, and at a minimum should not update projectors in every iteration (the \dQuote{\href{https://gitlab.mbb.univ-montp2.fr/francois/Infusion/-/blob/master/documents/InfusionIntro.pdf}{Gentle Introduction to Infusion}} may contain further information about this problem).       
 
   Prediction can be based on a linear mixed model (LMM) with autocorrelated random effects,
   internally calling the \code{\link[spaMM]{fitme}} function with formula
   \code{<parameter> ~ 1+ Matern(1|<stat1>+...+<statn>)}. This approach allows in principle to produce arbitrarily 
   complex predictors (given sufficient input) and avoids overfitting in the same way as restricted likelihood methods avoids overfitting in LMM. REML methods are then used by default to estimate the smoothing parameters. However, faster methods are generally required.
   
-  To keep REML computation reasonably fast, the \code{train_cP_size} and \code{trainingsize} arguments determine respectively the size of the subset used to estimate the smoothing parameters and the size of the subset defining the predictor given the smoothing parameters.  REML fitting is already slow for data sets of this size (particularly as the number of predictor variables increase).
+  To keep REML computation reasonably fast, the \code{train_cP_size} and \code{trainingsize} arguments determine respectively the size of the subset used to estimate the smoothing parameters and the size of the subset defining the predictor given the smoothing parameters.  REML fitting is already slow for data sets of this size (particularly as the number of predictor variables increases).
   
   If \code{method="GCV"}, a generalized cross-validation procedure (Golub et al. 1979) is used to estimate the smoothing parameters. This is faster but still slow, so a random subset of size \code{trainingsize} is still used to estimate the smoothing parameters and generate the predictor.
   
@@ -112,15 +111,15 @@ Further arguments passed to or from other functions. Currently, they are passed 
 \item \code{"ranger"}, the default, a computationally efficient implementation of random forest;
 \item \code{"randomForest"}, the older default, probably obsolete now;
 \item \code{"neuralNet"}, a neural network method, using  the \code{train} function from the \code{caret} package (probably obsolete too);
-\item \code{"fastai"} deep learning using the \code{fastai} package;
-\item \code{"keras"} deep learning using the \code{keras} package.
+\item \code{"fastai"} deep learning using the \code{fastai} package, not checked for a loog time;
+\item \code{"keras"} deep learning using the \code{keras} package, not checked for a loog time.
 }
-The last two interfaces may yet offer limited or undocumented control: using deep learning seems attractive but the benefits over \code{"ranger"} are not clear (notably, the latter provide out-of-bag predictions that avoid overfitting).   
+Using deep learning seems attractive but the benefits over \code{"ranger"} are not clear (notably, the latter provide out-of-bag predictions that avoid overfitting).   
 
   In principle, any object suitable for prediction could be used as one of the \code{projectors}, and \code{Infusion} implements their usage so that in principle unforeseen projectors could be used. That is, if predictions of a parameter can be performed using an object \code{MyProjector} of class \code{MyProjectorClass}, 
   \code{MyProjector} could be used in place of a \code{project} result 
   if \code{predict.MyProjectorClass(object,newdata,...)} is defined. However, there is no guarantee that this will work on unforeseen projection methods, as each method tends to have some syntactic idiosyncrasies. For example, if the learning method that generated the projector used
-  a formula-data syntax, then its \code{predict} method is likely to request names for its \code{newdata}, that need to be provided through \code{attr(MyProjector,"stats")} (these names cannot be assumed to be in the \code{newdata} when \code{predict} is called through \code{optim}). 
+  a formula-data syntax, then its \code{predict} method is likely to request names for its \code{newdata}, that need to be provided through \code{attr(MyProjector,"stats")} (these names cannot be assumed to be in the \code{newdata} when \code{predict} is called through the objective function of an \code{optim} call). 
   
 }
 \value{
@@ -139,7 +138,8 @@ The last two interfaces may yet offer limited or undocumented control: using dee
   T. Hastie, R. Tibshirani, and J. Friedman. The Elements of Statistical Learning: Data Mining, Inference,
 and Prediction. Springer, New York, 2nd edition, 2009.
 }
-\seealso{\code{\link{plot_proj}} and \code{\link{plot_importance}} for diagnostic plots of the projections.}
+\seealso{\code{\link{plot_proj}} and \code{\link{plot_importance}} for diagnostic plots of the projections.
+\code{\link{def_projectors}} for automation of the \code{project.character} calls.}
 \note{See workflow examples in \code{\link{example_reftable}} and \code{\link{example_raw_proj}}.}
 \examples{
   ## see Note for links to examples.

@@ -37,14 +37,14 @@ Although it has many control arguments, few of them may be needed in any applica
     precision = Infusion.getOption("precision"),
     eval_RMSEs = workflow_design$reftable_sizes,
     ##       verbosity
-    verbose = list(notable=TRUE, most=interactive(),final=NULL, movie=FALSE,
+    verbose = list(most=interactive(),final=NULL, notable=TRUE, movie=FALSE,
                  proj=FALSE, rparam=NULL, progress_bars=interactive()),
     ##       projection controls
     update_projectors = NULL,
     methodArgs = list(),
     ##       Likelihood surface modeling (up-to-date workflow)
     using = object$using, 
-    nbCluster = quote(refine_nbCluster(nr=nrow(data))),
+    nbCluster = quote(refine_nbCluster(nr=nrow(data), nc=ncol(data))),
     ##       parallelisation
     cluster_args = list(), nb_cores=NULL, env=get_from(object,"env"), 
     packages = get_from(object,"packages"), cl_seed=.update_seed(object),

@@ -58,23 +58,24 @@
                                parent = emptyenv())
 
 .Infusion.data <- new.env(parent = emptyenv())
-.Infusion.data$Constants <- list(Version = NA)
+# .Infusion.data$Constants <- list(Version = NA)
 .Infusion.data$options <- list(
   ## should be documented: 
   LRthreshold= - qchisq(0.999,df=1)/2, 
   nRealizations=1000,
-  seq_nbCluster= function(projdata, nr=nrow(projdata)) {seq(ceiling(nr^0.31))}, # M O D I F Y doc if this is modified ! 
+  nbClu_pow_rule_fn= .nbClu_pow_rule, # M O D I F Y doc if this is modified ! 
   #### 
   ## Cf get_workflow_design for the older version(s) of maxnbCluster()
-  ## Full MGM model has P = (nc*(nc+3)/2 +1)G-1) params 
+  ## Full MGM model has P = (nc*(nc+3)/2 +1)G-1 params 
   ## so G ~ (nr+1)/(nc*(nc+3)/2 +1) for a saturated model P ~ nr
   ## We compare P to 4 nr to set the maximum G such that P ~ nr/4:
   ## so G ~ (nr/4+1)/(nc*(nc+3)/2 +1) = (nr+4)/(2*nc*(nc+3) +4)
   ## test: MVNcovmat_identif/summaries_list.1_200.reclu15.v2.1.186.2 (in v185- P ~ nr/6)
   ## argument 'projdata' to emphasize that this is not the row reftable
-  maxnbCluster= function(projdata, nr= nrow(projdata), nc=ncol(projdata)) { 
-    (nr+4L)%/%(nc*(nc+3L)*2L+4L) 
+  maxnbCluster= function(projdata, nr= nrow(projdata), nc=ncol(projdata)) {
+    .maxnbClu_cluPars(nr=nr, nc=nc, ratio=4L)
   },
+  min_partition = 2L,
   ## Corresponds to zuko-like:
   design_hidden_layers = .design_hidden_layers_MGM_like,
   MAF_batchsize = function(...) 100L, # PSM19 used 100, (2017) used 50
@@ -87,14 +88,12 @@
   MAF_design_fac=1L,
   #
   gof_nstats_fn=function(nr,nstats) floor(nr^(1/3)),  # heuristically balancing gdim and max nbCluster
-  mixturing="Rmixmod", # alternatives: "xLLiM", "mclust"
+  mixturing="Rmixmod", # alternatives: "xLLiM", "mclust", "EMCluster"
   #infer_logL_method="infer_logL_by_Rmixmod", # "infer_logL_by_mclust", ## string for clusterExport !
   mixmodGaussianModel="Gaussian_pk_Lk_Ck", # all free vs # "Gaussian_pk_Lk_Dk_A_Dk", # shape is constant but volume and orientation are free
   mclustModel="VVV", ## "VEV", ## equivalent to default mixmodGaussianModel
   # Rmixmod controls
   criterion="AIC", # criterio for selection of number of clusters (not BIC by default!)
-  #strategy=quote(.do_call_wrap("mixmodStrategy",arglist=list(),pack="Rmixmod")), ## not doc'ed...
-  #strategy=quote(Rmixmod::mixmodStrategy()), ## given Rmixmod in Suggests
   global_strategy_args=list(nbIterationInAlgo=1000L), # list of args for Rmixmmod::mixmodStrategy()
   get_mixModstrategy=.get_mixModstrategy, # default fn is internal fn... must return a Strategy object
   mixmodSeed=123,
@@ -151,8 +150,9 @@
   #
   torch_device="cpu", 
   is_devel_session=NULL, # controls .is_devel_session()
-  mixturing_errorfn=.is_devel_session # here a function. Return value controls what to do
-  # in case of problem (here controls whether to dump frames)
+  mixturing_errorfn=.is_devel_session, # here a function. Return value controls what to do
+                                       # in case of problem (here controls whether to dump frames)
+  npp_opt="quantiles" # "____F I X M E____"
 )
 
 Infusion.options <- function(...) {
@@ -188,7 +188,8 @@ Infusion.getOption <- function (x) {Infusion.options(x)[[1]]}
 
 
 ".onLoad" <- function (lib, pkg) {
-  .Infusion.data$Constants$Version <- utils::packageVersion("Infusion")
+  #  .Infusion.data$Constants$Version <- utils::packageVersion("Infusion")
+  .Infusion.data$options$version <- utils::packageVersion("Infusion")
 }  
 
 .safe_tempdir <- function(temp_dir, sep = NULL, sub = NULL) {

@@ -261,7 +261,7 @@ plot.SLikp <-function(x,y,filled=FALSE,log.=TRUE,...) {
       if (filled) {
         filled.mapMM(object$fit,
                      Ztransf=Ztransf,
-                     color.palette=.Inf_palette(variant="spaMM_shift3"),nlevels=50,
+                     color.palette=.Inf_palette(variant="flashy"),nlevels=50,
                      plot.title=quote(title(main=mainst,
                                             xlab=fittedPars[1],ylab=fittedPars[2])),
                      decorations=quote({if (!is.null(object$latestPoints)) points(object$tailp[object$latestPoints,fittedPars],pch=".",cex=2);
@@ -272,7 +272,7 @@ plot.SLikp <-function(x,y,filled=FALSE,log.=TRUE,...) {
         
       } else mapMM(object$fit,
                    Ztransf=Ztransf,
-                   color.palette=.Inf_palette(variant="spaMM_shift3"),nlevels=50,
+                   color.palette=.Inf_palette(variant="flashy"),nlevels=50,
                    plot.title=quote(title(main=mainst,
                                           xlab=fittedPars[1],ylab=fittedPars[2])),
                    decorations=quote({if (!is.null(object$latestPoints)) points(object$tailp[object$latestPoints,fittedPars],pch=".",cex=2);

@@ -1,4 +1,5 @@
-.viridisOpts <- function (n, alpha = 1, begin = 0, end = 1, option = "D",...) {
+.viridisOpts <- function (n, alpha = 1, begin = 0, end = 1, option = "D", direction=1,
+                          ...) {
   if (begin < 0 | end < 0 | begin > 1 | end > 1) {
     stop("begin and end must be in [0,1]")
   }
@@ -18,18 +19,27 @@
   grDevices::rgb(cols[, 1], cols[, 2], cols[, 3], alpha = alpha)
 }
 
+# colorscale::cvd_emulator is useful
 .Inf_palette <- function(variant) {
   switch(
     variant,
+    "viridisRev" = function(n) grDevices::hcl.colors(n=n ,palette="viridis", rev=TRUE), # colorscale::sequential_hcl would add a dependency
+    #
+    ## a bit nicer than  viridisLite::viridis(n, alpha=1/2):
     "viridis" = function(n) grDevices::hcl.colors(n=n, palette="viridis",alpha=1/2), 
-    ##                     a bit nicer than  viridisLite::viridis(n, alpha=1/2)
+    # !! these "viridis" uses alpha will does not work on all devices (! main plot/scale discrepancies..)
+    # filled.contour(volcano, nlevels = 50,
+    #                color.palette = function(n, ...)
+    #                  hcl.colors(n, "viridis", alpha=2/3,...))
     ## I previously used further adjustements, but these are not so nice:
     # "viridis" = function(n){adjustcolor(.viridisOpts(n=n, option="D",bias=2),
     #                                     offset = c(0.5, 0.5, 0.3, 0))},
-    ## "turbo" replace "spaMM_shift3" for filled plots, but "spaMM_shift3" still used for scatter plots 
-    "turbo" = function(n){ adjustcolor(.viridisOpts(n=n, option="H", begin=0.1)) },
-    ##  spaMM.colors is distantly related to turbo but flashy. The redshift contracts the blue range.
-    "spaMM_shift3" = function(n=50L) spaMM.colors(n=n, redshift=3), # still used for dot plots
+    # 
+    ## "turbo" replace "flashy" for filled plots, but "flashy" still used for scatter plots 
+    "turbo" = function(n){ .viridisOpts(n=n, option="H", begin=0.1) },
+    ##  spaMM.colors is distantly related to turbo, but is flashy. The redshift contracts the blue range.
+    "flashy" = function(n=50L) spaMM.colors(n=n, redshift=3), # for dot plots
+    "spaMM_shift3" = function(n=50L) spaMM.colors(n=n, redshift=3), # more internal name for "flashy"
     "spaMM_shift1/2" = function(n=50L) spaMM.colors(n=n, redshift=1/2), # not used
     stop(".Inf_palette() 'variant' not handled")
   )
@@ -99,7 +109,7 @@ plot.SLik <-function(x,y,filled=FALSE,
             # this is evaluated at the end of spaMM::filled.mapMM
             contour(x=xGrid,y=yGrid,z=Zvalues,add=TRUE, nlevels=1, levels=c(0.05))})
         }
-        if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridis")
+        if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridisRev") # SLik, filled, not slice plot
         decosf <- substitute({x;y},list(x=quote(points(object$logLs[,fittedPars],cex=0.8)),
                                         y=decos)) ## joins language objects
         filled.mapMM(object$fit,Ztransf=Ztransf,
@@ -123,7 +133,7 @@ plot.SLik <-function(x,y,filled=FALSE,
           # this is evaluated in spaMMplot2D where no grid of z values is available for contour
         }
         if (is.null(color.palette)) {
-          color.palette <- .Inf_palette(variant="spaMM_shift3")
+          color.palette <- .Inf_palette(variant="flashy")
         }
         mapMM(object$fit,Ztransf=Ztransf,
               color.palette=color.palette,nlevels=50,

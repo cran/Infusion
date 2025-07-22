@@ -7,7 +7,7 @@
 .ULI <- function(...) {
   redondGeo <- cbind(...) ## always a matrix
   if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) ## .generateInitPhi with constant predictor led here
-  if (nrow(redondGeo)==1L) return(1L) ##  trivial case where the forllowingcode fails
+  if (nrow(redondGeo)==1L) return(1L) ##  trivial case where the following code fails
   # redondFac <- apply(redondGeo,1,paste,collapse=" ") ## always characters whatever the number of columns 
   # redondFac <- as.integer(as.factor(redondFac)) ## as.factor effectively distinguishes unique character strings 
   # uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour

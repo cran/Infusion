@@ -47,9 +47,12 @@ infer_logL_by_Hlscv.diag <- function(EDF,stat.obs,logLname,verbose) {
     logL <- logL/2
     isValid <- FALSE
   } else {
-    Hmat <- .do_call_wrap("Hlscv.diag", list(x=locEDF), pack="ks")
-    fit <- .do_call_wrap("kde", list(x=locEDF,H=Hmat), pack="ks")
-    logL <- .do_call_wrap("predict", list(object=fit,x=stat.obs), pack="ks")
+    Hlscv.diag <- .get_wrap("Hlscv.diag",pack="ks")
+    Hmat <- Hlscv.diag(x=locEDF)
+    kde <- .get_wrap("kde",pack="ks")
+    fit <- kde(x=locEDF,H=Hmat)
+    predict_ks <- .get_wrap("predict",pack="ks")
+    logL <- predict_ks(object=fit,x=stat.obs)
     isValid <- TRUE
   }
   names(logL) <- logLname
@@ -61,7 +64,8 @@ infer_logL_by_mclust <- function(EDF,stat.obs,logLname,verbose) {
   locEDF <- EDF[,stats,drop=FALSE] 
   if ("package:mclust" %in% search()) { ## don't assume it was previous attached if so olny in a child process...
      ##requireNamespace + nclust:: not enough  given calls 
-    fit <- ..densityMclust(locEDF,stat.obs=stat.obs) ## handling boundary effects, != mclust::densityMclust
+    nbCluster <- seq_nbCluster(nr=nrow(EDF), nc=ncol(EDF))
+    fit <- ..densityMclust(locEDF, stat.obs=stat.obs, nbCluster=nbCluster, verbose=verbose) ## handling boundary effects, != mclust::densityMclust
   } else {
     stop("'mclust' should be loaded first.")
   }
@@ -86,7 +90,8 @@ infer_logL_by_Rmixmod <- function(EDF,stat.obs,logLname,verbose) {
   if (is.infinite(kappa(XtX))) {
     warning("The summary statistics are collinear. Clustering will likely fail. Remove some summary statistic(s).")
   }
-  fit <- .densityMixmod(locEDF,stat.obs=stat.obs) ## Infusion::densityMixmod # using function's default seed =Infusion.getOption("mixmodSeed")
+  nbCluster <- get_nbCluster_range(projdata=locEDF, verbose=FALSE) # nc= # stats, for primitive workflow.
+  fit <- .densityMixmod(locEDF, nbCluster=nbCluster, stat.obs=stat.obs) ## Infusion::densityMixmod # using function's default seed =Infusion.getOption("mixmodSeed")
   if (length(fit@nbCluster)==0L) { ## likely degenerate distribution
     checkfix <- sapply(locEDF,var)==0
     ucheckfix <- sapply(locEDF[,checkfix,drop=FALSE],unique)

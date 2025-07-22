@@ -70,7 +70,7 @@ plot2Dprof(object, pars=object$colTypes$fittedPars, fixed=NULL,
   \item{lower, upper}{Numeric vectors of bounds for the parameters.}
   \item{verbose}{Boolean: whether to print information about the progress of the computation.}
   \item{color.palette}{
-  Either NULL or a function that can replace the default color function used by \code{plot2Dprof}. The function must have a single argument, giving the number of color levels. 
+  Either NULL or a function that can replace the default color function used by \code{plot2Dprof}. The function must have a single argument, giving the number of color levels. See Details for comments about default value.
 }
   \item{\dots}{ Further arguments passed by another function. Currently these arguments are ignored, except when handling the \code{add} argument, where they are passed to \code{graphics::lines}.
   }
@@ -87,6 +87,11 @@ A \code{"zoom"} plot shows only the top part of the profile, defined as points w
 A \code{"ranges"} (for \code{plot1Dprof}) is similar to \code{"zoom"} but maintains a fixed y range, facilitating comparison of profiles with and among different \code{plot1Dprof} calls. Few of the originally computed points may appear in the retained x range, in which case it may be useful to generate additional points ensured to appear in the plot, using the \code{CIlevels} argument.
 
 A \code{"dual"} plot displays both the zoom, and a shadow graph showing the full profile. The dual plot is shown only when requested and if there are values above and below \code{control$min}. The shadow curve color is given by \code{control$shadow_col}.
+
+The default color palette has been and may still be subject to changes, so if you want reproducible results, provide an explicit value. The default palette for 2D profiles is currently the \dQuote{turbo} palette as called by\cr
+\code{function(n){ .viridisOpts(n=n, option="H", begin=0.1)}}. If you want something more sequential,  \cr
+\code{function(n) grDevices::hcl.colors(n=n, palette="viridis", rev=TRUE)}
+may be a better choice.
 
 }
 \value{

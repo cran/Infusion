@@ -3,6 +3,16 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.3.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item New default values of "type" and "reset" arguments of confint.SLik_j().
+\item 'seq_nbCluster' package option replaced by 'nbClu_pow_rule_fn' option, which implements a slightly different rule, documented in help for get_nbCluster_range().
+\item new graphic defaults.
+\item EMCluster can be selected as an alternative to Rmixmod for the clustering step, by the 'using' argument of infer_slik_joint(), or globally by the 'mixturing' package option.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.2.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

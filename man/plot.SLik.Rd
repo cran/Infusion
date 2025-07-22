@@ -3,16 +3,17 @@
 \alias{plot.SLik_j}
 \alias{plot.SLikp}
 \title{
-Plot SLik or SLikp objects
+Plot fit objects
 }
 \usage{
-\method{plot}{SLik}(x, y, filled = FALSE, decorations = NULL,
-                    color.palette = NULL, plot.axes = NULL, 
-                    plot.title = NULL, plot.slices=TRUE, ...)
 \method{plot}{SLik_j}(x, y, filled = nrow(x$logLs)>5000L, decorations = NULL, 
                       color.palette = NULL, plot.axes = NULL, 
                       plot.title = NULL, from_refine=FALSE, plot.slices=TRUE, 
                       show_latest=FALSE, ...)
+# For objects returned by the primitive workflow:                      
+\method{plot}{SLik}(x, y, filled = FALSE, decorations = NULL,
+                    color.palette = NULL, plot.axes = NULL, 
+                    plot.title = NULL, plot.slices=TRUE, ...)
 %\method{plot}{SLikp}(x, y, filled=FALSE, log.=TRUE,...)
 }
 \description{
@@ -37,7 +38,7 @@ The smaller black dots mark points added in the latest iteration, if \code{refin
 %  Whether to log transform the response variable (i.e, a frequency). Zero frequency values are %converted to half the minimum nonzero frequency value before log transformation. 
 %}
   \item{color.palette}{
-  Either NULL or a function that can replace the default color function used by \code{plot.SLik}. The function must have a single argument, giving the number of color levels. 
+  Either NULL or a function that can replace the default color function used by \code{plot.SLik}. The function must have a single required argument, giving the number of color levels. See Details for comments about default value.
 }
 \item{plot.title}{	
 statements which replace the default titles to the main plot (see Details). 
@@ -59,13 +60,18 @@ further arguments passed to or from other methods (currently can be used to pass
 or \code{variances} to \code{filled.mapMM}).
 }
 }
+\details{
+The default color palette has been and may still be subject to changes, so if you want reproducible results, provide an explicit value. Some of the idiosyncratic color palettes used by (at least) early versions of \pkg{Infusion} helped me see what I want to see in a plot, but were not necessarily appropriate in all contexts. The current default for  for \dQuote{slice} plots in \code{plot.SLik_j} is \cr
+\code{function(n) grDevices::hcl.colors(n=n, palette="viridis", rev=TRUE)}. The \dQuote{turbo} palette as called by\cr
+\code{function(n){ .viridisOpts(n=n, option="H", begin=0.1)}} is being tried as default for filled, non-slice plots, and a more flashy one is used for dot plots.
+
+Different graphic functions are called depending on the number of estimated parameters. For two parameters, \code{\link[spaMM]{mapMM}} or \code{\link[spaMM]{filled.mapMM}} are called. For more than two parameters, \code{\link[spaMM]{spaMM.filled.contour}} is called. See the documentation of these functions for the appropriate format of the \code{plot.title} and \code{plot.axes} arguments.  
+
+}
 \value{
 \code{plot.SLik_j} returns invisibly a list including coordinates of the plot(s) (at least if the latest version of the spaMM package is installed). 
 The exact format will depend on the nature of the plot but the names of elements should be self-explanatory. 
 \code{plot.SLik} returns the plotted object invisibly. 
-}
-\details{Different graphic functions are called depending on the number of estimated parameters. For two parameters, \code{\link[spaMM]{mapMM}} or \code{\link[spaMM]{filled.mapMM}} are called. For more than two parameters, \code{\link[spaMM]{spaMM.filled.contour}} is called. See the documentation of these functions for the appropriate format of the \code{plot.title} and \code{plot.axes} arguments.  
-
 }
 \examples{
 \dontrun{

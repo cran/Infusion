@@ -1,11 +1,11 @@
 Package: Infusion
 Type: Package
 Title: Inference Using Simulation
-Description: Implements functions for simulation-based inference. In particular, implements functions to perform likelihood inference from data summaries whose distributions are simulated. The package implements more advanced methods than the ones first described in: Rousset, Gouy, Almoyna and Courtiol  (2017) <doi:10.1111/1755-0998.12627>.  
+Description: Implements functions for simulation-based inference. In particular, implements functions to perform likelihood inference from data summaries whose distributions are simulated, as first described in Rousset et al. (2017) <doi:10.1111/1755-0998.12627>. The package implements more advanced methods described in Rousset et al. (2025) <doi:10.1101/2024.09.30.615940>.  
 Encoding: UTF-8
-Version: 2.2.0
-Date: 2024-09-26
-Imports: spaMM (>= 4.4.16), proxy, blackbox (>= 1.1.41), mvtnorm,
+Version: 2.3.0
+Date: 2025-07-22
+Imports: spaMM (>= 4.5.0), proxy, blackbox (>= 1.1.41), mvtnorm,
         methods, numDeriv, pbapply, ranger, foreach, matrixStats, boot,
         nloptr, geometry, cli, viridisLite
 Suggests: testthat, Rmixmod, caret, xLLiM, reticulate, mafR (>= 1.0.11)
@@ -18,8 +18,8 @@ License: CeCILL-2
 ByteCompile: true
 URL: https://gitlab.mbb.univ-montp2.fr/francois/Infusion
 NeedsCompilation: no
-Packaged: 2024-09-26 14:51:05 UTC; francois.rousset
-Author: François Rousset [aut, cre, cph]
-    (<https://orcid.org/0000-0003-4670-0371>)
+Packaged: 2025-07-22 12:43:08 UTC; francois.rousset
+Author: François Rousset [aut, cre, cph] (ORCID:
+    <https://orcid.org/0000-0003-4670-0371>)
 Repository: CRAN
-Date/Publication: 2024-09-26 21:00:49 UTC
+Date/Publication: 2025-07-22 13:42:28 UTC

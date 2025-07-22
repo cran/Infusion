@@ -1,5 +1,5 @@
 .calc_all_slices <- function(object,fittedPars,color.palette,plot.axes=NULL) {
-  if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridis")
+  if (is.null(color.palette)) color.palette <- .Inf_palette(variant="viridisRev") # slice plot
   np <- length(fittedPars)
   intsqrt <- floor(sqrt(np))
   if (intsqrt>1) {loccex.axis <- par("cex.axis")*0.6} else {loccex.axis <- par("cex.axis")}

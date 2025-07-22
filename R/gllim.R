@@ -72,13 +72,13 @@
 }
 
 .wrap_gllim <- function(RGPpars, summstats, nbCluster, cstr=list(Sigma="i")) {
+  gllim <- .get_wrap("gllim", pack="xLLiM")
   if (length(nbCluster)>1L) {
     # Although gllim handles multiple K, 
     # it does not return enough info to extract the model with minimal AIC.
     # So each K must be fitting independently.
     objfn <- function(RGPpars,summstats, K, cstr=list(Sigma="i")) {
-      cluObject <- .do_call_wrap("gllim",arglist=list(tapp=RGPpars, yapp=summstats,in_K=K, cstr=cstr), 
-                                 pack="xLLiM")
+      cluObject <- gllim(tapp=RGPpars, yapp=summstats,in_K=K, cstr=cstr)
       logL <- cluObject$LLf
       df <- cluObject$nbpar
       AIC <- -2*logL+2*df
@@ -86,8 +86,9 @@
     }
     resu <- .wrap_minimize_over_nbClu(init=NULL, objfn=objfn, range=nbCluster, trace=FALSE, RGPpars=RGPpars, 
                       summstats=summstats, cstr=cstr)$cluObject   
-  } else resu <- .do_call_wrap("gllim",arglist=list(tapp=RGPpars, yapp=summstats,in_K=nbCluster, cstr=cstr), pack="xLLiM")
-  
+  } else {
+    resu <- gllim(tapp=RGPpars, yapp=summstats,in_K=nbCluster, cstr=cstr)
+  }
   nclu <- length(resu$pi)
   
   RGP_COVlist <- logl_COVlist <- vector("list", nclu)

@@ -123,29 +123,29 @@ goftest <- function(object, nsim=99L, method="", stats=NULL, plot.=TRUE,
                     bg="orange"))
   }
   if (feasible) {
-    safe_nbCluster <- get_nbCluster_range(projdata=gofStats) # this checks that one cluster (or more) can be fitted (.get_gof_stats() presumably handles that, but it provides only a default value.)
+    safe_nbCluster <- get_nbCluster_range(projdata=gofStats, verbose=verbose) # nc= # gofStats implicitly
+    # : this checks that one cluster (or more) can be fitted (.get_gof_stats() presumably handles that, but it provides only a default value.)
     using <- Infusion.getOption("mixturing")
     gofStats <- as.data.frame(gofStats)
     if (using=="mclust") {
       if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
       models <- vector("list",length(safe_nbCluster))
       for (it in seq_along(safe_nbCluster)) {
-        models[[it]] <- .do_call_wrap("densityMclust",
-                                      list(data=gofStats,modelNames=Infusion.getOption("mclustModel"), 
-                                           G=safe_nbCluster[it], verbose=FALSE, plot=FALSE),
-                                      pack="mclust")
+        densityMclust <- .get_wrap("densityMclust",pack="mclust")
+        models[[it]] <- densityMclust(data=gofStats,modelNames=Infusion.getOption("mclustModel"), 
+                                      G=safe_nbCluster[it], verbose=FALSE, plot=FALSE)
       }
       gofdens <- .get_best_mclust_by_IC(models) 
       # predict(gofdens...) will call predict.densityMclust() which will ignore the undefined solve_t_chol_sigma
     } else {
-      gofdens <- .do_call_wrap(
-        "mixmodCluster",
-        list(data=gofStats, 
-             nbCluster=safe_nbCluster, 
-             models=.do_call_wrap("mixmodGaussianModel",
-                                  list(listModels=Infusion.getOption("mixmodGaussianModel"))), 
-             seed=123, 
-             strategy=.Infusion.data$options$get_mixModstrategy(nc=ncol(gofStats))))
+      mixmodCluster <- .get_wrap("mixmodCluster")
+      gofdens <- mixmodCluster(data=gofStats, 
+                               nbCluster=safe_nbCluster, 
+                               models={
+                                 mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
+                                 mixmodGaussianModel(listModels=Infusion.getOption("mixmodGaussianModel"))                                 }, 
+                               seed=123, 
+                               strategy=.Infusion.data$options$get_mixModstrategy(nc=ncol(gofStats)))
       gofdens <- .get_best_mixmod_by_IC(gofdens) 
       solve_t_chol_sigma_list <- lapply(gofdens@parameters["variance"], .solve_t_cholfn)
     }

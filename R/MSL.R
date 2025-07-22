@@ -153,7 +153,8 @@ check_raw_stats <-
                                  newobs=NULL, 
                                  givenpars=NULL, # vector 
                                  profiledNames,
-                                 seed=NULL) {
+                                 seed=NULL,
+                                 unsort) {
   if (is.null(newobs)) {
     givens <- c(givenpars, get_from(object,"stat.obs"))
   } else givens <- c(givenpars,drop(unlist(newobs))) # where unlist(<1-row data frame>)
@@ -161,9 +162,9 @@ check_raw_stats <-
   # For MAF we need the conditioning value ie sobs passed asa 1-row matrix
   if (inherits(instr_postdens,"MAF") && 
       attr(instr_postdens,"which")=="I_postdens") givenpars <- t(givens)
-  inits <- .sample_in_absol_constrs(object, ceil_size = nsim, profiledNames, 
+  inits <- .sample_in_absol_constrs(object, nsim = nsim, profiledNames, 
                                     density=instr_postdens, givenpars=givenpars, 
-                                    norm_or_t=.wrap_rmvnorm, seed=seed)
+                                    norm_or_t=.wrap_rmvnorm, seed=seed, unsort=unsort)
 }
 
 # For profiles:
@@ -250,7 +251,14 @@ check_raw_stats <-
     xy <- cbind(x=subX[,parname], 
                 logL=c(preds_safe, logL_outer))
     if (TRUE) {
-      convhull_info <- convhulln(xy)
+      convhull_info <- try(convhulln(xy))
+      if (inherits(convhull_info,"try-error")) { # _____F I X M E_____ tracking elusive bug
+        print(tail(xy))
+        if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { 
+          utils::dump.frames(to.file=TRUE, include.GlobalEnv = TRUE)
+          stop("convhulln() failed. Wrong input? See output log, and dump file.")
+        } else stop("convhulln() failed. Wrong input? tail(<input matrix>) has been printed.")
+      }
       convhullids <- unique(as.vector(convhull_info))
     } else {
       convhull_info <- resetCHull(xy, quickndirty = TRUE)$vertices
@@ -307,16 +315,18 @@ check_raw_stats <-
       base_inits <- .inits_from_postdens(
         object, max_base=max_base, 
         nsim= nsim, # default is large...
-        newobs=newobs, seed=seed, givenpars=given, profiledNames=profiledNames)
-      ## Does not seem useful:
-      # base_inits <- rbind(object$logLs[,object$colTypes$fittedPars],
-      #                     base_inits)
+        newobs=newobs, seed=seed, givenpars=given, profiledNames=profiledNames,
+        unsort=FALSE)
     }
   } else { # tried for MSL call in particular: cf also .ecdf_2lr()
     nr <- nrow(base_inits)
     if (nr>max_base) base_inits <- base_inits[(nr-max_base):nr ,, drop=FALSE]
   }
   inits <- rbind(more_inits, base_inits, object$MSL$MSLE)
+  #
+  # Very last resort (too small reftable,posterior density generates points nor respecting box constraints)
+  if ( ! nrow(inits)) inits <- object$logLs[,object$colTypes$fittedPars] 
+  #
   for (st in names(given)) inits[,st] <- given[st]
   if ( ! is.null(constr_crits)) { # selection of points that satisfy parameter constraints
     dx <- pupper-plower
@@ -367,28 +377,32 @@ check_raw_stats <-
   init[profiledNames] # named vector ordered as plower
 }
 
-.get_gradfn <- function(object, init) { # grad of  - logL
+.get_gradfn <- function(object, init, sign=-1L) { # grad of  - logL
   col_ids <- which(object$colTypes$fittedPars %in% names(init))
-  nbCluster <- object$jointdens@nbCluster
+  nbCluster <- .get_nbCluster_from_SLik(object)
   logproportions <- object$clu_params$logproportions
   solve_t_chol_sigma_lists <- object$clu_params$solve_t_chol_sigma_lists
   stat.obs <- get_from(object,"stat.obs")
+  force(sign)
   gradfn <- function(v) { 
     grad_log_pardens <- .grad.dMixmod(object=object$pardens,newdata=v,
-                                          logproportions=logproportions, clu_means=object$clu_params$pardens_means,
-                                          nbCluster=nbCluster, col_ids=col_ids, solve_t_chol_sigma_list=solve_t_chol_sigma_lists$pardens)
+                                      logproportions=logproportions, clu_means=object$clu_params$pardens_means,
+                                      nbCluster=nbCluster, col_ids=col_ids, solve_t_chol_sigma_list=solve_t_chol_sigma_lists$pardens)
     grad_log_jointdens <- .grad.dMixmod(object=object$jointdens,newdata=c(v, stat.obs),
                     logproportions=logproportions, clu_means=object$clu_params$jointdens_means,
                     nbCluster=nbCluster, col_ids=col_ids, solve_t_chol_sigma_list=solve_t_chol_sigma_lists$jointdens) 
     # return value could be further penalized by - [parvaldens<object$thr]* grad_log_pardens 
     # so that it would be the grad of the "safe" logL. This would require parvaldens being available locally.
-    grad_log_pardens - grad_log_jointdens #  of  - logL
+    if (sign==-1L) {
+      grad_log_pardens - grad_log_jointdens #  of  - logL
+    } else grad_log_jointdens - grad_log_pardens #  of  logL
   }  
   gradfn # returns the FUNCTION
 }
 
 # Will use gradient only if "safe' is not TRUE => gradient not used in practice
-.ad_hoc_opt <- function(init, objfn, lower, upper, safe=TRUE, LowUp=list(), gradient, 
+.ad_hoc_opt <- function(init, objfn, lower, upper, safe=TRUE, 
+                        LowUp=list(lower=lower, upper=upper), gradient, 
                         object, neg_ineq_constrfn, template=NULL, ...) {
   time1 <- Sys.time()
   if (safe) {

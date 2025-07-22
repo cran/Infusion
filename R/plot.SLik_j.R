@@ -85,7 +85,7 @@ plot.SLik_j <- function(x, # this is the SLik_j object; we will rename it and us
     maxprofy <- max(profy)
     if (maxprofy>maxlogL) {
       whichmax <- which.max(profy)
-      object$MSL$init_from_prof <- x[whichmax, ]
+      object$MSL$init_from_prof <- unlist(x[whichmax, ])
       maxlogL <- maxprofy
     }
     y <- exp(profy-maxlogL) ## 
@@ -111,25 +111,30 @@ plot.SLik_j <- function(x, # this is the SLik_j object; we will rename it and us
                                    # .scale=.scale,
                                    plot.title = eval(plot.title)) 
     } else {
+      has_CI_info <-  ! is.null(object$CIobject)
+      if (has_CI_info) {
+        key.axes <- quote({axis(4)}) # no mark on scale, but CI bounds will be plotted
+      } else key.axes <- quote({axis(4);axis(4,at=c(0.1465, 0.05),labels=c("1D CI","2D CI"), 
+                                   cex.axis=0.5)}) # isocline would be even better
       decos <- quote({
         if (show_latest && !is.null(object$latestPoints)) {points(object$logLs[object$latestPoints,fittedPars],pch=".",cex=2)}; # $latestPoints is added by refine()...
         if (!is.null(object$CIobject)) {points(object$CIobject$bounds,pch="+",cex=1.5,col="red")};
         points(t(object$MSL$MSLE),pch="+",cex=2);
         decorations}) ## language object
-      if (is.null(color.palette)) color.palette <- .Inf_palette(variant="spaMM_shift3")
+      if (is.null(color.palette)) color.palette <- .Inf_palette(variant="flashy") # not filled; replaces spaMM_shift3
       xy <- object$logLs[,fittedPars]
       profz <- predict(object,newdata=xy, which="safe", constr_tuning = Inf)
       maxprofz <- max(profz)
       if (maxprofz>maxlogL) {
         whichmax <- which.max(profz)
-        object$MSL$init_from_prof <- xy[whichmax, ]
+        object$MSL$init_from_prof <- unlist(xy[whichmax, ])
         maxlogL <- maxprofz
       }
       z <- exp(profz-maxlogL)
       try(spaMMplot2D(x=xy[,1],y=xy[,2],z=z,
                   color.palette=color.palette ,nlevels=50,
                   plot.title=eval(plot.title),
-                  key.axes={axis(4);axis(4,at=c(0.1465, 0.05),labels=c("1D CI","2D CI"), cex.axis=0.5)}, 
+                  key.axes=eval(key.axes), 
                   decorations=decos, 
                   ...) # spaMMplot2D may receive its map.asp arg through these dots ; default determined by spaMM:::.calc_plot_dim() 
       ) # try() to automatically handle Rstudio's 'Plot region too large' errors for user-level plot(<SLik...>) calls.  

@@ -17,12 +17,12 @@
       - .get_dens_from_GMM.Rmixmod(object=object, X=fullpar, tstat.obs=newobs, 
                                    log=log, which=which, thr_info=thr_info)
     }
-  } else if (inherits(object$jointdens,"Mclust")) { # code presumably not tested (_F I X M E_)
+  } else if (inherits(object$jointdens,"dMclust")) { # code presumably not tested (_F I X M E_)
     thr_info <- .get_thr_info(object)
     prof_mlogLfn_Dsim <- function(parmv) { 
       fullpar <- template
       fullpar[names(init)] <- parmv
-      - .predict_SLik_j_mclust(object=object, X=fullpar, tstat.obs=newobs, 
+      - .predict_SLik_j_dMclust(object=object, X=fullpar, tstat.obs=newobs, 
                                log=log, which=which, thr_info=thr_info)
     }
   } else {
@@ -40,7 +40,7 @@
   } else neg_ineq_constrfn <- NULL
   
   .safe_optim(init, objfn=prof_mlogLfn_Dsim, lower=lower,upper=upper, 
-              neg_ineq_constrfn=neg_ineq_constrfn, LowUp=list(), verbose=FALSE, object=object)
+              neg_ineq_constrfn=neg_ineq_constrfn, verbose=FALSE, object=object)
 }
 
 .ecdf_2lr <- function(object, 
@@ -82,8 +82,8 @@
         reftable_raw <- .get_reft_raw(object)
         sub_reftable <- reftable_raw[object$proj_trainset,]
         for (st in names(which(missing_forests))) {
-          projectors[[st]] <- .update_projector.SLik_j(
-            object, proj=st, reftable_raw=sub_reftable, methodArgs = list(write.forest=TRUE))
+          projectors[[st]] <- .update_projector(
+            projectors=projectors, focal=st, reftable_raw=sub_reftable, project_methodArgs = list(write.forest=TRUE))
         }
       } 
       statempdist_h0 <- .project_reftable_raw(statempdist_h0, projectors=projectors, 
@@ -294,6 +294,7 @@ get_LRboot <- function(object, h0_pars=NULL, nsim=100L, reset=TRUE,
   resu
 }
 
+# for p*
 .fit_2lr <- function(chi2_obs, ecdf_2lr, df) {
   if (df>1L) stop(".fit_2lr() does not handle df>1") # we're working on correcting 
   #   the root of the sum of squares of 'df' nominally gaussian RVs...
@@ -306,7 +307,7 @@ get_LRboot <- function(object, h0_pars=NULL, nsim=100L, reset=TRUE,
     - sum(dnorm(rn,mean = 0,sd = 1,log = TRUE))
   }
   rfit <- .safe_opt(init = 1, objfn = objfn,lower = -Inf, upper=Inf, 
-                            LowUp=list(), verbose=FALSE)
+                            LowUp=list(lower=Inf), verbose=FALSE) # _____F I X M E____ why .safe_opt() for 1D optim?
   log.abs.u.r <- rfit$solution
   rs <- r_obs+log.abs.u.r/r_obs # adjusted r
   rs^2

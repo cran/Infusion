@@ -158,11 +158,10 @@ multi_binning <- function(m,subsize=trunc(nrow(m)^(Infusion.getOption("binningEx
   x
 }
 
-# new variable name
+# new variable name [as in spaMM]
 .makenewname <- function(base,varnames) { 
-  pattern <- paste(base,"[0-9]+",sep="")
-  allmatches <- dir(pattern=pattern)
-  allremainders <- substring(allmatches, nchar(base)+1L) 
+  varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
+  allremainders <- substring(varnames,nchar(base)+1) 
   allnumericremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
   ## 2015/03/04
   if (length(allremainders) == 0L && length(allnumericremainders) == 0L) { ## if base = allremainders => length(allnumericremainders) == 0 not sufficient

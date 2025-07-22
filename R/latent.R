@@ -31,9 +31,13 @@ pplatent <- function(object, type="mean",
     }
   } else if (inherits(object$jointdens,"dMclust")) {
     for (ii in seq_len(nr)) {
-      latentdens <- .conditional_mclust(object$completedens, given=newDP[ii,])
+      latentdens <- .conditional_dMclust(object$completedens, given=newDP[ii,], 
+                                        using=object$using)
       if (type=="median") {
-        pseudoVs <- do.call("sim", c(latentdens[c("modelName", "parameters")],list(n=size)))[,-1,drop=FALSE] #matrix
+        if (object$using=="mclust") {
+          pseudoVs <- do.call("sim", c(latentdens[c("modelName", "parameters")],list(n=size)))[,-1,drop=FALSE] #matrix
+        } else pseudoVs <- .simVVV_rmvnorm_or_t(parameters=latentdens$parameters,
+                                                n=size,use_rmvt=FALSE)[,-1,drop=FALSE] #matrix
         pred[ii,] <- matrixStats::colMedians(pseudoVs)
       } else pred[ii,] <- matrixStats::colSums2(latentdens$parameters$pro * t(latentdens$parameters$mean))
     }
@@ -69,47 +73,65 @@ pplatent <- function(object, type="mean",
   CDF # vector
 }
 
-# and the \code{platent} and \code{qlatent} are the distribution function  
+# and the \code{platent} and \code{qlatent} are respectively the distribution function  
 # of the quantile function for the latent variable given the fitted parameters 
 # and data. Using \code{qlatent} to obtain prediction intervals 
 # is the naive plug-in method that ignores uncertainty in parameter estimates. 
 
-.platent <- function(q, # expects vector, 1-row matrix should work [vectors of latent vars for one sample of sample-GP] 
+.platent <- function(q, # named numeric vector: A bootstrap-simulated value of the latent variable, 
+                        # FORMAT: expects vector, 1-row matrix should work [vectors of latent vars for one sample of sample-GP] 
                      object, newDP=NULL,
-                    sumstats= t(get_from(object,"stat.obs")), # default= 1-row matrix...
-                    pars=t(object$MSL$MSLE), # default= 1-row matrix...
+                    sumstats, # projected sumstats for data bootstrap-simulated conjointly with the latent value 'q'
+                              # 1-row matrix...
+                              # I set a default =t(get_from(object,"stat.obs")) but a non-default is always used. 
+                    pars, # parameter estimates for the bootstrap-simulated data 
+                    # 1-row matrix...
+                    # I set a default =t(object$MSL$MSLE) but it's again never used.
                     ...) {
   if (is.null(dim(sumstats))) sumstats <- t(sumstats) # matrix needed below
   if (is.null(newDP)) newDP <- as.matrix(cbind(as.data.frame(pars),as.data.frame(sumstats))) # ugly but it works... 
   # 'given' must be vector not data frame
   nr <- nrow(newDP)
   CDF <- matrix(NA, nrow=nr, ncol=length(q))
+  colnames(CDF) <- whichVars <- names(q)
   completedens <- object$completedens
   if (inherits(completedens,"dMixmod")) {
     for (ii in seq_len(nr)) {
       latentdens <- .conditional_Rmixmod(completedens, given=newDP[ii,])
-      parameters <- latentdens@parameters
-      sds <- lapply(parameters@variance, function(v) sqrt(diag(v))) # only considering marginal distribus of each latent var
-      CDF[ii,] <- .platent_1DP(q, latentdens,
-                               proportions=parameters@proportions,
-                               means=parameters@mean,
-                               sds= sds ) # sds is here list
+      # The CDF of the 'q' (bootstrap-simulated latent value) 
+      # in the latent dens (derived from the completedens by conditioning on the values (D*,thetat(D*)), 
+      # for the same whichVars replicate, of the projected data and of parameter estimates) 
+      for (st in whichVars) {
+        dens_1D <- .marginalize_Rmixmod(latentdens, colNames = latentdens@varNames, For = st)
+        parameters <- dens_1D@parameters
+        sds <- lapply(parameters@variance, function(v) sqrt(diag(v))) # only considering marginal distribus of each latent var
+        CDF[ii,st] <- .platent_1DP(q[st], dens_1D,
+                                 proportions=parameters@proportions,
+                                 means=parameters@mean,
+                                 sds= sds ) # sds is here list
+      }
     }
-  } else if (inherits(completedens,"dMclust")) {
+  } else if (inherits(completedens,"dMclust")) { # for EMCluster or mclust.
     for (ii in seq_len(nr)) {
-      latentdens <- .conditional_mclust(completedens, given=newDP[ii,])
-      parameters <- latentdens$parameters
-      sds <- apply(parameters$variance$sigma,3L, function(v) sqrt(diag(v)), simplify=FALSE)
-      CDF[ii,] <- .platent_1DP(q, latentdens,
-                               proportions=parameters$pro,
-                               means=t(parameters$mean),
-                               sds=sds  ) # idem
+      latentdens <- .conditional_dMclust(completedens, given=newDP[ii,], using=object$using)
+      for (st in whichVars) {
+        dens_1D <- .marginalize_dMclust(latentdens, colNames = latentdens@varNames, For = st,
+                                        over = setdiff(whichVars,st), using=object$using)
+        parameters <- dens_1D$parameters
+        sds <- apply(parameters$variance$sigma,3L, function(v) sqrt(diag(v)), simplify=FALSE)
+        CDF[ii,st] <- .platent_1DP(q[st], dens_1D,
+                                   proportions=parameters$pro,
+                                   means=t(parameters$mean),
+                                   sds=sds  ) # idem
+      }
     }
   }
   
   CDF
 }
 
+# Function to get the quantiles of the latent var for the given percentile 'p',
+# which has been corrected relative to the nominal coverage probability.
 .qlatent_1DP <- function(p, latentdens, 
                          s_latentv, 
                          means, 
@@ -128,16 +150,20 @@ pplatent <- function(object, type="mean",
   for (p_it in seq_along(p)) {
     # On (CDF) values sorted in increasing order, use which.max(.>.) or which.min(.<.) ...  :
     # Counterintuitively, it returns the first of the sorted (CDF) values that matches the condition.
-    # which.max is then the fastest method to find first value that matches the condition
-    whichsup <- which.max(CDF>p[p_it]) 
+    # which.max is then the fastest method to find first value that matches the condition. But...
+    # ...it also returns 1L if none of the tests is TRUE.
+    tests <- (CDF>p[p_it])
+    whichsup <- which.max(tests) 
                                        
     minsup <- min(whichsup)
     if(minsup==Inf) { # unexpected, but not caused by forgetting to sort s_latentv   # no CDF value higher than p
-      quant[p_it] <- Inf 
+      quant[p_it] <- NA 
     } else if(minsup==1L) { 
       if (any( ! whichsup)) stop(".qlatent_1DP() called on unsorted 's_latentv'!")
-      quant[p_it] <- -Inf # all CDF values higher than p
-    } else quant[p_it] <- sum(s_latentv[minsup+c(-1L,0L)])/2 # This is where root finding would be needed.
+      if ( ! tests[length(tests)]) { # None of the tests is TRUE: Upper bound not found from CDF.
+        quant[p_it] <- NA # if the corrected 'p' is 1 none of the CDF values can be strictly higher (even if there is a large mass of the CDF exactly at 1).
+      } else quant[p_it] <- NA # all CDF values higher than p
+    } else quant[p_it] <- mean(s_latentv[minsup+c(-1L,0L)]) # This is where root finding would be needed. (____F I X M E____)
   }
   quant
 }
@@ -154,8 +180,8 @@ pplatent <- function(object, type="mean",
     latentdens <- .conditional_Rmixmod(locdens, given=newDPs[ii,]) # must be 1D
     # In default calls, newDPs is simply SMLE+prod_data so latentdens is only considered in such 'best' conditions 
     parameters <- latentdens@parameters
-    # Get the quantiles of the latent var for the given percentile,
-    #    'p', which has been corrected relative to the nominal coverage probability.
+    # Get the quantiles of the latent var for the given percentile 'p',
+    #    which has been corrected relative to the nominal coverage probability.
     quant[ii,] <- .qlatent_1DP(
       p=p, latentdens, 
       s_latentv=s_latentv, # again, only used as a dense coverage of the range, not fortheir precise distribution.
@@ -168,14 +194,15 @@ pplatent <- function(object, type="mean",
   quant
 }
 
-.qlatent_1latent_mclust<- function(s_latentv, locdens, newDPs, p, 
-                             levels # colnames for return object
+.qlatent_1latent_mclust <- function(s_latentv, locdens, newDPs, p, 
+                             levels, # colnames for return object
+                             using
 ) {
   s_latentv <- sort(s_latentv)
   nr <- nrow(newDPs)
   quant <- matrix(NA, nrow=nr, ncol=length(p))
   for (ii in seq_len(nr)) {
-    latentdens <- .conditional_mclust(locdens, given=newDPs[ii,])
+    latentdens <- .conditional_dMclust(locdens, given=newDPs[ii,], using=using)
     parameters <- latentdens$parameters 
     quant[ii,] <- .qlatent_1DP(p=p, latentdens, s_latentv=s_latentv,
                                means=t(parameters$mean),
@@ -187,7 +214,7 @@ pplatent <- function(object, type="mean",
 }
 
 
-.qlatent <- function(p, object, focalDPs=NULL,
+.qlatent <- function(p, object, focalVar, focalDPs=NULL,
                     sumstats= t(get_from(object,"stat.obs")), # default= 1-row matrix...
                     pars=t(object$MSL$MSLE), # default= 1-row matrix...
                     levels # colnames for return object
@@ -198,38 +225,47 @@ pplatent <- function(object, type="mean",
     # ugly but it works (given' must be vector not data frame):
     focalDPs <- as.matrix(cbind(as.data.frame(pars),as.data.frame(sumstats))) # 1-row for default pars 
   }  
-  latentVars <- object$colTypes$latentVars
-  s_latentv <- object$logLs[,latentVars, drop=FALSE]
+  s_latentv <- object$logLs[,focalVar, drop=FALSE]
   # s_latentv is only expected to be a dense exploration of the range of latent values,
   # this property being used in .qlatent_1latent_Rmixmod() to avoid numerical root finding by a simple approx.
-  # The distrib of s_latentv (as determined by the SGPs i nthe reftable) should then not matter.
+  # The distrib of s_latentv (as determined by the SGPs in the reftable) should then not matter.
   # .qlatent_1latent_Rmixmod() -> .qlatent_1DP() expect s_latentv to be sorted!
   # But sorting can only be performed when a single column (single latentVar) has been selected.
   completedens <- object$completedens
-  resu <- vector("list",length(latentVars))
-  names(resu) <- latentVars
+  latentVars <- object$colTypes$latentVars
+  # resu <- vector("list",length(latentVars))
+  # names(resu) <- latentVars
   if (inherits(completedens,"dMixmod")) {
     varNames <- object$completedens@varNames
-    for (st in latentVars) {
-      # Perhaps not essential step, slightly complicating the understanding of the code:
-      locdens <- .marginalize_Rmixmod(object$completedens, colNames=varNames ,
-                                      For=setdiff(varNames, setdiff(latentVars,st)))
-      # locdens is NOT YET the conditional distrib of the latent var given the focalDP.
-      # It retains all dimensions in 'For', thus only latentVars not currently inferred are removed.
-      # This .marginalize...() was conceived as an optimization 
-      # of later .conditional...()'s for hypothetical different rows of focalDP. 
-      resu[[st]] <- .qlatent_1latent_Rmixmod(s_latentv=s_latentv[,st], locdens=locdens, 
-                                             newDPs=focalDPs, p=p, levels=levels)
-    }
+    # The inferred conditional distrib of the latent var given the focalDP will 
+    # be used. But it is computed in two steps in the hypothetical case Where 
+    # there are several latent variables. The first step, the one that calls 
+    # .marginalize...(), is not essential, complicating the understanding of 
+    # the code. It was conceived as an optimization of the "hypothetically many" 
+    # later calls to .conditional...()'s (number of calls: 
+    # number of rows of focalDP times number of latentVars).
+    # In practice there is only one row in focalDP, defined by 
+    # the 'pars' and 'sumstats' extracted from the input SLik object. 
+    # In practice there is also only one latentVar (default case of first applications),
+    # in which case the obtained 'marg_wrt_othr_ltnt' is identical to the completedens, 
+    # and nothing is actually optimized.
+    # The second step calls .qlatent_1latent_Rmixmod -> .conditional_Rmixmod()
+    # to obtain the target conditional distrib.
+    marg_wrt_othr_ltnt <- .marginalize_Rmixmod(object$completedens, colNames=varNames ,
+                                               For=setdiff(varNames, setdiff(latentVars,focalVar)))
+    resu <- .qlatent_1latent_Rmixmod(s_latentv=s_latentv[,focalVar], locdens=marg_wrt_othr_ltnt, 
+                                           newDPs=focalDPs, p=p, levels=levels)
   } else if (inherits(completedens,"dMclust")) {
     varNames <- rownames(completedens$parameters$mean)
-    for (st in latentVars) {
-      locdens <- .marginalize_mclust(object$completedens, colNames=varNames ,
-                                      For=setdiff(varNames, setdiff(latentVars,st)))
-      resu[[st]] <- .qlatent_1latent_mclust(s_latentv=s_latentv[,st], locdens=locdens, 
-                                            newDPs=focalDPs, p=p, levels=levels)
-    }
+    
+    marg_wrt_othr_ltnt <- .marginalize_dMclust(object$completedens, colNames=varNames ,
+                                               For=setdiff(varNames, setdiff(latentVars,focalVar)),
+                                               using=object$using)
+    resu <- .qlatent_1latent_mclust(s_latentv=s_latentv[,focalVar], locdens=marg_wrt_othr_ltnt, 
+                                    newDPs=focalDPs, p=p, levels=levels,
+                                    using=object$using)
   }
+  attr(resu,"corr_p") <- p
   resu
 }
 
@@ -260,12 +296,14 @@ pplatent <- function(object, type="mean",
 
 # Implementation of LawlessF05's method
 latint <- function(object, nsim=199L, levels=c(0.025,0.975), 
+                   whichVars=object$colTypes$latentVars,
                    sumstats= t(get_from(object,"stat.obs")), # default= 1-row matrix...
                    Simulate,
                    control.Simulate=get_from(object,"control.Simulate"),
                    bootSamples=NULL,
                    ...) {
-  latentVars <- object$colTypes$latentVars
+  if ( ! missing(whichVars)) whichVars <- 
+      intersect(object$colTypes$latentVars, whichVars) # ...standardize order... 
   statNames <- object$colTypes$statNames
   
   # 1) simulate bootstrap replicates of (data and latentvar) D* and O*
@@ -284,19 +322,21 @@ latint <- function(object, nsim=199L, levels=c(0.025,0.975),
       parsTable=data.frame(t(object$MSL$MSLE))[rep(1,nsim),], 
       control.Simulate=control.Simulate,
       reftable=NULL, ...)
-    latentsimuls <- bootSamples[,latentVars]
+    latentsimuls <- bootSamples[,whichVars]
     if (is.null(object$projectors)) {
       ranprojSamples <- bootSamples
-    } else ranprojSamples <- .project_reftable_raw(bootSamples, projectors = object$projectors, ext_projdata=object$projdata)
+    } else ranprojSamples <- 
+      .project_reftable_raw(bootSamples, projectors = object$projectors, 
+                            ext_projdata=object$projdata)
   } else {    # code tidying not tested since this option is not recommended
     # directly in projected space en keeping the latent variable
     ranprojSamples <- simulate(object, nsim=nsim) # n replicates sample-GP
-    latentsimuls <- ranprojSamples[,latentVars] # nrow = n replicates sample-GP
+    latentsimuls <- ranprojSamples[,whichVars] # nrow = n replicates sample-GP
   }
   newprojStats <- ranprojSamples[,statNames, drop=FALSE] # nrow = n replicates sample-GP
   
   latentsimuls <- as.matrix(latentsimuls) # bc  simfun ->.platent -> .platent_1DP -> pnorm does not handle data.frame
-  
+  colnames(latentsimuls) <- whichVars
   simfun <- function(it) { # other arguments are in the environment of the function, which seems sufficient.
     # 2) refit the model to data D* to obtain theta(D*)
     # 3) evaluate p* = CDF p...(new latent var, theta(D*)) 
@@ -306,7 +346,7 @@ latint <- function(object, nsim=199L, levels=c(0.025,0.975),
     opt_mlogL_Dsim <- .optim_mlogL_newobs(object, newobs=newobs,
                                           init=NULL, which="safe",
                                           lower=object$lower, upper=object$upper)
-    .platent(q = latentsimuls[it,], # vector of latent vars for one replicate of sample-GP
+    .platent(q = latentsimuls[it,], # q: vector of' (scalar in practice) latent vars for one replicate of sample-GP
             sumstats = newobs, # data frame of projections (for params and latent vars) for one replicate of sample-GP
             object = object, pars=t(opt_mlogL_Dsim$solution))
   }
@@ -314,10 +354,18 @@ latint <- function(object, nsim=199L, levels=c(0.025,0.975),
   dim(iterator) <- c(1L,nsim)
   object <- .shrink(object, ...) 
   pboo <- spaMM::dopar(newresp = iterator, fn = simfun, fit_env=list(), ... )
-  
-  # 4) evaluate G(w) = bootstrap average of I(p*<w) for different w (says 0.025 and 0.975)
-  Gw <- sapply(levels, function(w) sum(pboo<=w)/length(pboo)) # 0.02120212 0.96019602 which looks consistent with the plot
-  
-  # 5) and presumably invert this using q(., theta(D)) to obtain interval on response scale.
-  .qlatent(p=Gw, sumstats=sumstats, object=object, levels=levels)
+  if (is.null(dim(pboo))) dim(pboo) <- c(1L, length(pboo))
+  rownames(pboo) <- whichVars
+
+  resu <- vector("list", length(whichVars))
+  names(resu) <- whichVars
+  for (st in whichVars) {
+    # 4) evaluate G(w) = bootstrap average of I(p*<w) for different w (says 0.025 and 0.975)
+    Gw <- sapply(levels, function(w) sum(pboo[st,]<=w)/length(pboo[st,])) # 0.02120212 0.96019602 which looks consistent with the plot
+    
+    # 5) and presumably invert this using q(., theta(D)) to obtain interval on response scale.
+    resu[[st]] <- .qlatent(p=Gw, focalVar=st,
+                           sumstats=sumstats, object=object, levels=levels)
+  }  
+  resu
 }

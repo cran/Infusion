@@ -11,7 +11,7 @@ Workflow design
 get_workflow_design(npar, n_proj_stats=npar, n_latent=0L,
                     final_reft_size=NULL,
                     refine_blocksize=NULL, subblock_nbr=NULL,
-                    version=packageVersion("Infusion"),
+                    version=Infusion.getOption("version"),
                     cumn_over_maxit = NULL,
                     test_fac=NULL)
 }
@@ -35,7 +35,7 @@ get_workflow_design(npar, n_proj_stats=npar, n_latent=0L,
   NULL, or integer specifying a non-default value of the target number of iterations per refine() call (actual number of iterations may differ).
 }
   \item{version}{
-  A version number for \pkg{Infusion}. This is intended to allow reproducibility of results of some past versions, as return values have changed over versions.
+  A version number for \pkg{Infusion}. This is intended to allow reproducibility of results of various  versions of \pkg{Infusion}.
 }
 \item{cumn_over_maxit}{
   logical; Whether to stop iteration when the target cumulative number of points is added to the reference table, or when the target number of iterations is first reached.

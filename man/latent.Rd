@@ -1,4 +1,4 @@
-\name{declare_latent}
+\name{latent}
 \alias{declare_latent}
 \alias{pplatent}
 \alias{latint}
@@ -6,11 +6,11 @@
 Modeling and predicting latent variables
 }
 \description{
-Latent variables are unobserved variables which, for given model parameters, are random. Since they are unobserved, they cannot appear in data nor used to infer parameters. However, they can be predicted if their joint distribution with the data is learned from the reference table. Thus for inference about latent variables, these should be returned along summary statistics by the simulation function generating the samples for the reference table, but they should be declared as such so that later inference steps can distinguish them from both parameters and summary statistics. The \code{declare_latent} function is used for that purpose. 
+Latent variables are unobserved variables which, for given model parameters, are random. Since they are unobserved, they cannot appear in data nor used to infer parameters. However, they can be predicted if their joint distribution with the data is learned from the reference table. Thus, for inference about latent variables, these should be returned along summary statistics by the simulation function generating the samples for the reference table, but they should be declared as such so that later inference steps can distinguish them from both parameters and summary statistics. The \code{declare_latent} function is used for that purpose. 
 
 The \code{pplatent} function can be used to point-predict latent values, by their inferred mean or median given the (projected) summary statistics and fitted parameter values. 
 
-The \code{latint} function provides prediction intervals for the latent variable, accounting for uncertainty in parameter estimates, using a bootstrap method (see Details).     
+The \code{latint} function provides prediction intervals for the latent variable(s), accounting for uncertainty in parameter estimates, by using corrected levels obtained by a bootstrap method instead of the input \code{levels} (see Details). Sometimes the bounds cannot be determined from the simulations only, in particular when the corrected levels approach 0 or 1 (this may happen for example when the fitted distribution of the latent variable is degenerate with zero variance). In that case, NA will be returned instead of a quantile. If the user has additional knowledge about the distribution of the latent variable given the parameter estimates (e.g, if it has known finite bounds), s.he may use these corrected levels (included as attributes in the return value) to infer the interval bounds.
 }
 \usage{
 declare_latent(reftable, latentVars)
@@ -20,6 +20,7 @@ pplatent(object, type="mean",
          pars=t(object$MSL$MSLE), 
          size=1000L, ...)
 latint(object, nsim=199L, levels=c(0.025,0.975), 
+       whichVars=object$colTypes$latentVars,
        sumstats= t(get_from(object,"stat.obs")), 
        Simulate, control.Simulate=get_from(object,"control.Simulate"), 
        bootSamples=NULL,
@@ -31,6 +32,9 @@ A reference table of simulation as returned by \code{\link{add_reftable}}
 }
   \item{latentVars}{
 A vector of names of variables to be treated as latent variables.
+}
+  \item{whichVars}{
+A vector of names of latent variables for which intervals are to be computed.
 }
 \item{object}{
   An object of class \code{SLik_j}.
@@ -54,7 +58,7 @@ A vector of names of variables to be treated as latent variables.
   May be used to provide the simulation function if it is not stored in the \code{object}; usage is then as for \code{\link{add_reftable}}. If it is set to NULL, bootstrap samples will instead be drawn from the gaussian mixture fit, but this shoudl be avoided for good performance. When the argument is missing (default), the \code{Simulate} information is sought in the \code{object}, and if absent, the gaussian mixture fit is used with a warning. 
 }
   \item{control.Simulate}{
-    A list of arguments of the \code{Simulate} function (see\code{\link{add_simulation}}). The default value should be used unless you understand enough of its structure to modify it wisely (e.g., it may contain the path of an executable used to perform the fit on one machine and a different path may be specified to compute the prediction interval on another machine).  
+    A list of arguments of the \code{Simulate} function (see \code{\link{add_simulation}}). The default value should be used unless you understand enough of its structure to modify it wisely (e.g., it may contain the path of an executable used to perform the fit on one machine and a different path may be specified to compute the prediction interval on another machine).  
   }
   \item{bootSamples}{
 A data frame. The bootstrap samples may be provided by this argument, otherwise they will be automatically simulated by the function provided by the \code{Simulate} argument.  The boot samples may for example be obtained by calling \code{simulate(}<\emph{Slik_j object}>\code{, SGP=TRUE)}. 
@@ -64,7 +68,9 @@ A data frame. The bootstrap samples may be provided by this argument, otherwise 
 }
 }
 \details{
-The \code{latint} function aims to provide intervals for the latent variable \eqn{V}, with controlled coverage for given parameter values. The parametric bootstrap method of Lawless & Fredette (2005) can be adapted to the present problem. First, new data \eqn{D^*} and new latent values \eqn{V^*} are jointly simulated, given the summary-ML estimates (this uses the sample-generating process simulator, but these simulations are not added to the reference table). Second, their original method requires the evaluation for each new \eqn{(D^*,V^*)} of \eqn{F_V(V=V^*|D^*;\theta(D^*))}, the value of the cumulative distribution function \eqn{F_V} of \eqn{V} evaluated at \eqn{V=V^*} values, given \eqn{D^*} and given new parameter estimates \eqn{\theta(D^*)}. % Their eq 14 in particular.
+The \code{latint} function aims to provide intervals for the latent variable \eqn{V}, with better controlled coverage for given parameter values than would be provided by a plug-in method which would read the bounds of the intervals from the quantiles of the inferred distribution of latent values at the given confidence \code{levels}. For that purpose, corrected levels are used instead of the input \code{levels}. 
+
+Lawless & Fredette (2005) described a parametric bootstrap method to obtain these corrected levels, here adapted in the context of simulation-based inference. First, as in the original method, new data \eqn{D^*} and new latent values \eqn{V^*} are jointly simulated, given the summary-ML estimates (this uses the sample-generating process simulator, but these simulations are not added to the reference table). Second, their original method requires the evaluation for each new \eqn{(D^*,V^*)} of \eqn{F_V(V=V^*|D^*;\theta(D^*))}, the value of the cumulative distribution function \eqn{F_V} of \eqn{V} evaluated at \eqn{V=V^*} values, given \eqn{D^*} and given new parameter estimates \eqn{\theta(D^*)}. % Their eq 14 in particular.
 It also requires the quantile function of \eqn{V} for the original data and parameter estimates. \code{latint} uses the fit of the multivariate gaussian mixture model to the reference table, stored in the fit object, for fast parameter refitting and for fast estimation of these functions on each bootstrap sample \eqn{(D^*,V^*)}. 
 
 \code{latint(., levels=c(0.5))} will return the median of the predictive distribution, 
@@ -76,7 +82,7 @@ Quantile computations in \code{pplatent} and \code{latint} are approximate and m
 \code{declare_latent} returns the input \code{reftable} with modified attributes. \code{pplatent} returns a vector of predicted latent values.
 
 \code{pplatent} returns a single numeric value or a vector.
-\code{latint} returns a list of matrices. Each matrix has with one column per element of \code{levels}, and one row per row of \code{sumstats}. There is one such matrix for each latent variable.  
+\code{latint} returns a list of matrices. Each matrix give quantiles of the predictive distribution, with one column per element of \code{levels}, one row per row of \code{sumstats}, and a \code{p_corr} attribute giving the vector of corrected levels used to obtain the quantiles (see Details). There is one such matrix for each latent variable.  
 }
 \references{
 Lawless J. F., Fredette M. (2005) Frequentist prediction intervals and predictive distributions. Biometrika 92: 529–542, <doi:10.1093/biomet/92.3.529>

@@ -364,7 +364,7 @@ str.MAF <- function(object, ...) {
 
 .simulate.MAF <- function(density, nsim, 
                           given, # =t(get_from(object,"stat.obs"))
-                          object, # I need 'given' or 'object'
+                          object, # I need 'given' or 'object' for conditional simulation
                           batchsize= 4000L
 ) {
   colTypes <- attr(density,"colTypes")
