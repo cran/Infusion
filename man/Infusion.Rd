@@ -11,7 +11,7 @@
   Implements a collection of methods to perform inferences based on simulation of realizations of the model considered. In particular it implements 
   \dQuote{summary likelihood}, an approach that effectively evaluates and uses the likelihood of simulated summary statistics. 
 
-The procedures for the \dQuote{primitive} workflow, implemented in the first published version of the package, are being maintained for back compatibility, but users are urged to use the distinct, up-to-date workflow (see Examples). The package is expected to perform best when used in combination with \pkg{Rmixmod} for multivariate Gaussian mixture modeling, although the \pkg{mclust} package can also be used (with less control and perhaps decreased performance). The inference workflow typically (but not necessarily) includes dimension-reduction steps (\dQuote{projections}) for summary statistics, and has been more finely tuned for projections performed using the \pkg{ranger} package (though \pkg{Infusion} should handle other methods). 
+The procedures for the \dQuote{primitive} workflow (Rousset et al. 2017), implemented in the first published version of the package, are being maintained for back compatibility, but users are urged to use the distinct, up-to-date workflow (see Examples; Rousset et al. 2026). The package is expected to perform best when used in combination with \pkg{Rmixmod} for multivariate Gaussian mixture modeling, although the \pkg{mclust} package can also be used (with less control and perhaps decreased performance). The inference workflow typically (but not necessarily) includes dimension-reduction steps (\dQuote{projections}) for summary statistics, and has been more finely tuned for projections performed using the \pkg{ranger} package (though \pkg{Infusion} should handle other methods). 
 
 The up-to-date workflow builds and updates an object of class \code{"SLik_j"} which is designed to carry all the information required for pursuing the inference. Thus, successive inference steps (in particular, successive calls to the key \code{\link{refine}} function) can be carried on different computers, with the caveats noted below, by transferring the object between computers. 
 
@@ -27,5 +27,18 @@ However, the more significant caveat of such usage of environments, from an infe
 \note{See examples \code{\link{example_reftable}} for the most complete example using up-to-date workflow, and \code{\link{example_raw_proj}} or \code{\link{example_raw}} for older workflows.}
 \examples{
   ## see Note for links to examples.
+}
+\references{
+ Bartlett, M. S. (1937) Properties of sufficiency and statistical tests. Proceedings of the Royal Society (London) A 160: 268-282.
+
+ Davison A.C., Hinkley D.V. (1997) Bootstrap methods and their applications. Cambridge Univ. Press, Cambridge, UK.
+ 
+ Rousset F, Gouy A, Almoyna CM, Courtiol A (2017). The summary likelihood method and its implementation in
+  the Infusion package. \emph{Molecular Ecology Resources} \bold{17}: 110-119.
+  \doi{10.1111/1755-0998.12627}
+  
+   Rousset F, Raphaël L, Estoup A, Marin J (2026). A new iterative framework for simulation-based population
+  genetic inference with improved coverage properties of confidence intervals. \emph{Peer Community Journal}
+  \bold{6}: e43. \doi{10.24072/pcjournal.721}.
 }
 \keyword{ package }

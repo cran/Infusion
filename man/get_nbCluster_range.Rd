@@ -16,7 +16,7 @@ Adventurous users can change the rules used by \pkg{Infusion} by changing the gl
 \details{
 The default upper value of the \code{nbCluster} range is controlled by two rules:
   
-\code{ * }The first rule sets the maximum number of clusters as function of the number of samples \eqn{n} in the reference table. The default rule \code{nr^(0.31-0.08/nc)} is close to the value \eqn{n^{0.3}} irecommended in the \code{mixmod} statistical documentation (Mixmod Team, 2016).   
+\code{ * }The first rule sets the maximum number of clusters as function of the number of samples \eqn{n} in the reference table. The default rule, as implemented in \code{Infusion:::.nbClu_pow_rule}, reduces when more than three parameters are estimated to the rule \eqn{n^{0.31}} discussed in Supplementary Information of Rousset et al. (2026).   
 
 \code{ * }This first rule is corrected by a second rule setting a maximum dependent also on the dimensions of the \code{projdata} (the one used internally for clustering, which typically differs from the dimensions of the user-level \code{data}, if projections have been applied, in particular). This second rule is controlled by the \code{maxnbCluster} option. 
 
@@ -43,4 +43,10 @@ get_nbCluster_range(projdata, nr = nrow(projdata), nc = ncol(projdata),
 #   20 parameters from a reference table with 30000 rows:
 seq_nbCluster(nr=30000L)
 get_nbCluster_range(nr=30000L, nc=40L) # nc = *twice* the number of parameters
+}
+\references{
+   Rousset F, Raphaël L, Estoup A, Marin J (2026). A new iterative framework for simulation-based population
+  genetic inference with improved coverage properties of confidence intervals. \emph{Peer Community Journal}
+  \bold{6}: e43. \doi{10.24072/pcjournal.721}\cr
+  Supplementary Information: \doi{10.5281/zenodo.19615137}
 }

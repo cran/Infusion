@@ -71,8 +71,10 @@ Will depend on \code{which}, but aims to retain a convenient format backward-com
   #   get_from(slik, which="par_RMSEs", force=TRUE)
   # # The result are saved in the 'slik' object, so running again 
   #   get_from(slik, which="par_RMSEs")
-  # # will no longer return NULL.
+  # # will no longer return NULL.  get_from(., which="RMSEs") works similarly.
   #
+  # ##### Other diagnostic of quality of likelihood-surface inference
+  #   get_from(slik, which="C2ST")
   # ##### Other, less commonly needed elements
   #   get_from(slik, "Simulate"")
   #   get_from(slik, "control.Simulate")

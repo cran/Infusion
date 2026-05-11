@@ -2,11 +2,31 @@ citHeader("To cite Infusion in publications please use:")
 
 
 bibentry(bibtype="Article",
+  author = c(
+       person("François", "Rousset", role = "aut"),
+       person("Leblois", "Raphaël", role = "aut"),
+       person("Arnaud", "Estoup", role = "aut"),
+       person("Jean-Michel", "Marin", role = "aut")
+  ),
+  title   = "A new iterative framework for simulation-based population genetic inference with improved coverage properties of confidence intervals",
+  journal = "Peer Community Journal",
+  year    = "2026",
+  volume  = "6",
+  doi     = "10.24072/pcjournal.721",
+  pages   = "e43"
+)
+
+bibentry(bibtype="Article",
          title = "The summary likelihood method and its implementation in the Infusion package",
-         author = as.person("François Rousset [aut], Alexandre Gouy [aut], Camille Martinez Almoyna [aut], Alexandre Courtiol [aut]"),
+         author = c(
+       person("François", "Rousset", role = "aut"),
+       person("Alexandre", "Gouy", role = "aut"),
+       person("Camille", "Martinez Almoyna", role = "aut"),
+       person("Alexandre", "Courtiol", role = "aut")
+  ),
          journal      = "Molecular Ecology Resources",
          year         = "2017",
          volume       = "17",
          pages        = "110-119",
-         url          = "https://dx.doi.org/10.1111/1755-0998.12627"
+         doi          = "10.1111/1755-0998.12627"
 )

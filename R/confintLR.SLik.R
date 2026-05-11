@@ -153,8 +153,8 @@ profile.SLik <- function(fitted,...) profile.SLik_j(fitted=fitted,...) ## no nee
     } else {
       if (flower < 0) {
         constr_tuning <- NA
-        CIlo <- try((uniroot(objectivefn, interval = c(lowval, 
-                                                       MLval), f.lower = flower, f.upper = fupper,tol=tol))$root, 
+        CIlo <- try((uniroot(objectivefn, interval = c(lowval, MLval), 
+                             sf.lower = flower, f.upper = fupper,tol=tol))$root, 
                     TRUE)
       } else if (verbose) {
         mess <- paste0("Lower CI bound for ",parm," cannot be computed as it appears to exceed the 'fitted' parameter range.")

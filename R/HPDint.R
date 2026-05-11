@@ -155,7 +155,7 @@
   resu
 }
 
-.HPDint_from_post_sample <- function(posterior_parm, # posterior_sample, 
+.HPDint_from_post_sample <- function(posterior_parm, # posterior_sample *for single param*, 
                      object, level, verbose, plot.,
                      seed=Infusion.getOption("mixmodSeed"),
                      parm=colnames(posterior_parm)) {
@@ -184,11 +184,12 @@
     solve_t_chol_sigma_list = lapply(clu_post@parameters["variance"], .solve_t_cholfn)
   )
   if (plot.) plot(unifparm, clu_post_densv)
-  # range of HPD region:
+  # range of HPD region: clu_post_densv is from the GMM clustering of the marginal distribution for 1 param,
+  # not from a joint posterior
   orderdens <- order(clu_post_densv, decreasing = TRUE)
   cumdens <- cumsum(clu_post_densv[orderdens])
   cumdens <- cumdens/tail(cumdens,1)
-  idx <- which.min(cumdens < level)
+  idx <- which.min(cumdens < level) # location of first minimum = first FALSE
   range(unifparm[orderdens[1:idx]])
 }
 

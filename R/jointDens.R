@@ -352,13 +352,11 @@
     } else (ceiling(nr^(0.30+(nr-8000)/900000))) # denom = 100*(17000-8000)
   } else if (version < "2.2.17") { 
     # approaches 0.31 from below, with 0.29 for 4 cols (2 pars) and 5000 rows
-    (ceiling(nr^(0.31-0.08/nc)))
+    (ceiling(nr^(0.31-0.08/nc))) # Laugier et al doi:10.1086/735820 SI uses this (package version 2.2.16)
   } else {
-    # Version consistent with simuls for two publications
-    if (nc < 8L) { # npar \leq 3
-      # approaches 0.31 from below, with 0.29 for 4 cols (2 pars) and 5000 rows
+    if (nc < 8L) { # ie, npar \leq 3: still replicates simuls in Laugier et al doi:10.1086/735820
       (ceiling(nr^(0.31-0.08/nc)))
-    } else ceiling(nr^0.31)
+    } else ceiling(nr^0.31) # simuls in Rousset et al doi:10.24072/pcjournal.721 (nc from 8 to 30)
   }   
 }
 
@@ -374,7 +372,10 @@ seq_nbCluster <- function(nr, # often called only with nr argument
 }
 
 # This combines the seq_nbCluster() rule based on power of n
-# and the options$maxnbCluster based on the number of parameters
+# and the options$maxnbCluster based on the number of parameters. To use an old version of the latter rule,
+# one should use get_workflow_design(., version), 
+# which may modify the value of options$maxnbCluster 
+# (this is a side effect, not seen in the workflow return value).
 get_nbCluster_range <- function(projdata, # data must be only those for mixture modelling
                                 nr= nrow(projdata), nc=ncol(projdata), 
                                 nbCluster=seq_nbCluster(nr, nc), # the (essentially) ^0.31 rule
@@ -440,6 +441,18 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
 }
 
 .safe_densityMixmod <- function(locarglist, stat.obs) {
+  # Wrong-dimensioned initParam can cause random crashes so the following check is important.
+  # By contrast, .densityMixmod() ignores silently initParam if the number of clusters do not match,
+  # which as good reasons to occur routinely, so no check needed.
+  initParam <- locarglist$initParam
+  if ( ! is.null(initParam) && 
+      ncol(locarglist$data) != ncol(initParam@mean)) {
+    warnmess <- paste0("'initParam' ignored because of mismatch with dimension of the data (",
+                       ncol(locarglist$data)," vs ", ncol(initParam@mean),")")
+    warning(warnmess, immediate. = TRUE)
+    locarglist$initParam <- NULL
+  }
+
   jointdens <- try(do.call(".densityMixmod",c(locarglist,list(stat.obs=stat.obs))),silent=TRUE) # using seed in locarglist ie that from geoOption
   if (.any_mixmodResult_issue(jointdens))  {
     if (.Infusion.data$options$mixturing_errorfn()) { # default set to be TRUE only for me
@@ -466,32 +479,18 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
 .Rmixmodelize <- function(data, locnbCluster, inferredVars, statNames, initParam, 
                           stat.obs, latentVars, fittedPars, verbose, marginalize,
                           nbCluster) {
-  if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
+  if (verbose$most) {
+    if (.is_devel_session()) cat("\n")
+    cat(paste0("Joint density modeling: ",nrow(data)," points"))
+  }
   cat_xpctd_nbClu <- verbose$most && length(locnbCluster)==1L
+  if (cat_xpctd_nbClu) cat(paste0(", and given nbCluster=",locnbCluster))
   
   mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
   models <- mixmodGaussianModel(listModels=Infusion.getOption("mixmodGaussianModel"))
-  if (FALSE && length(locnbCluster)==1L && locnbCluster==1L) {
-    # The idea is to allow a modeling by two clusters with identical 'orientation' (identical D_k's)
-    # when two unconstrained clusters is still not 'safely' possible  
-    # (this constraints is the one that economizes more dfs than other ones.)
-    #
-    # This runs, at least in a preliminary sense [screen messages are not fully consistent], 
-    #  but with no obvious benefits so far.
-    nc <- length(c(inferredVars,statNames))
-    if (3L *nrow(data)> (nc+1L)*(nc+2L)) { # threshold ~(3/2) * dfs of the constrainedmodel with two clusters 
-      locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=2L, 
-                         seed=Infusion.getOption("mixmodSeed") , 
-                         models={
-                           mixmodGaussianModel <- .get_wrap("mixmodGaussianModel")
-                           models <- mixmodGaussianModel(listModels="Gaussian_pk_Lk_D_Ak_D")
-                         })
-    }
-  } else {
-    locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
-                       seed=Infusion.getOption("mixmodSeed") , models=models, initParam=initParam)
-    if (cat_xpctd_nbClu) cat(paste0(", and given nbCluster=",locnbCluster))
-  }
+  
+  locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
+                     seed=Infusion.getOption("mixmodSeed") , models=models, initParam=initParam)
   # locarglist$strategy is controlled within .densityMixmod()
   jointdens <- .safe_densityMixmod(locarglist, stat.obs)
   # plotCluster(jointdens,data=locarglist$data,variable1="theta_p",variable2="theta") # var1: stat (prediction of projection); var2: actual param
@@ -554,7 +553,8 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
                             projectors=NULL,
                             is_trainset=NULL,
                             initParam=NULL,
-                            latentVars # info kept in $colTypes element of return value. 
+                            latentVars # mandatory, without default. API version gets it from attr(data,"latentVars")
+                                       # Info kept in $colTypes element of return value. 
 ) {
   if ( ! is.data.frame(data)) {
     stop(paste("'object' is not a data.frame.\n Did you mean to call infer_logLs() rather than infer_Slik_joint() ?"))
@@ -661,7 +661,7 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
   # but this is not the case for physa (because smaller reftable: seq-pow smaller: 
   #  max rule not activated in refine_nbCluster())
   
-  if ( ! length(grep("u.mafR|c.mafR",using))) { # For all clustering methods:
+  if ( ! length(grep("u.mafR|c.mafR",using))) { # For all methods that use clustering:
     nbCluster <- eval(nbCluster) # allowing evaluation of quoted default arg passed from refine.default()
     if ( identical(nbCluster,"max")) nbCluster <- 
         structure(max(get_nbCluster_range(data,nc=nc,verbose=verbose$most)),
@@ -681,14 +681,20 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
       if ( ! "package:EMCluster" %in% search()) stop("'EMCluster' should be loaded first.")
       locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
                          seed=Infusion.getOption("mixmodSeed"))
-      if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      if (verbose$most) {
+        if (.is_devel_session()) cat("\n")
+        cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      }
       jointdens <- .densityEMCluster(data=data[,c(inferredVars,statNames)],
                                      stat.obs,nbCluster=locnbCluster, init=initParam)
     } else {
       if ( ! "package:mclust" %in% search()) stop("'mclust' should be loaded first.")
       locarglist <- list(data=data[,c(inferredVars,statNames)],nbCluster=locnbCluster, 
                          seed=Infusion.getOption("mixmodSeed"))
-      if (verbose$most) cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      if (verbose$most) {
+        if (.is_devel_session()) cat("\n")
+        cat(paste0("Joint density modeling: ",nrow(data)," points"))
+      }
       jointdens <- .densityMclust(data=data[,c(inferredVars,statNames)],
                                   stat.obs,nbCluster=locnbCluster)
     }
@@ -794,7 +800,7 @@ get_nbCluster_range <- function(projdata, # data must be only those for mixture 
   return(resu)
 }
 
-# API version has no initParam argument and sets the latentVars arg for the data attribute:
+# API version has no initParam nor latentVars arguments, and gets the latentVars arg for the data attribute:
 infer_SLik_joint <- function(data, ## reference table ~ abc
                               stat.obs,
                               logLname=Infusion.getOption("logLname"), ## not immed useful
@@ -818,7 +824,7 @@ infer_SLik_joint <- function(data, ## reference table ~ abc
     }
   }
   mc[[1L]] <- get(".infer_SLik_joint", asNamespace("Infusion"), inherits=FALSE) 
-  mc["latentVars"] <- list(attr(data,"latentVars")) # [] on mc seems to work as on a list
+  mc["latentVars"] <- list(attr(data,"latentVars")) # `[` on mc seems to work as on a list
   resu <- eval(mc,envir = parent.frame())
   if (length(resu$colTypes$statNames) < 
       length(resu$colTypes$fittedPars)) warning("Fewer statistics than fitted parameters:\n  some parameters may not be identifiable.")
@@ -1445,6 +1451,9 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
                                      unsort # overriden for MAFs
                                      ) {
   if (inherits(density,"MAF")) { # "mafR" variants
+    # Reached by MSL() -> .inits_from_postdens() -> .sample_in_absol_constrs() -> here
+    # Here we need to sample from a conditional MAF (though not necessarily a very accurate one),
+    # which describes the (instrumental) $postdens, given the stat.obs.
     if (attr(density,"which")=="I_postdens") { 
       givens <- givenpars[,object$colTypes$statNames, drop=FALSE] # expected to match t(get_from(object,"stat.obs"))
     } else givens <- givenpars 
@@ -1652,7 +1661,7 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
   nvar <- npar+n_proj_stats
   if (is.null(final_reft_size)) final_reft_size <- 1000L * pmax(round(nvar*3/2-1), 
                                                                 round( pmax(1000L*nvar, 50L*nvar^2)/1000))
-  if ( ! is.null(test_fac)) {
+  if ( length(test_fac)) {
     final_reft_size <- final_reft_size*test_fac
     if (is.null(refine_blocksize)) {
       refine_blocksize <- max(1000L*test_fac, # for npar=1...
@@ -1681,6 +1690,66 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
   subblock_size <- subblock_size/2L
   mget(ls(), environment())
 }
+
+.get_workflow_design_2.3.0 <- function(npar, 
+                                       n_proj_stats = npar, 
+                                       n_latent = 0L, 
+                                       final_reft_size = NULL,
+                                       refine_blocksize = NULL, 
+                                       subblock_nbr = NULL, 
+                                       init_reft_size = NULL,
+                                       cumn_over_maxit = NULL, 
+                                       test_fac = NULL
+                                       ) {
+  nvar <- npar + n_proj_stats + n_latent
+  if (is.null(final_reft_size))
+    final_reft_size <- 1000L * round(nvar * 3/2 - 1)
+  if (!is.null(test_fac)) {
+    final_reft_size <- final_reft_size * test_fac
+    if (is.null(refine_blocksize)) {
+      refine_blocksize <- max(1000L * test_fac, 
+                              (1000L * test_fac * (final_reft_size%/%(3000 * test_fac))))
+    }
+  }
+  else {
+    if (is.null(refine_blocksize)) {
+      refine_blocksize <- max(1000L, (1000L * (final_reft_size%/%3000)))
+    }
+  }
+  if (is.null(subblock_nbr)) {
+    divisors <- seq(2, max(4L, refine_blocksize/(100 * log(refine_blocksize))))
+    subblock_nbr <- max(divisors[(refine_blocksize%%divisors) == 0L])
+    rm("divisors")
+  }
+  subblock_size <- refine_blocksize/subblock_nbr
+  if (is.null(init_reft_size))
+    init_reft_size <- min(refine_blocksize/5L, 1000L)
+  reftable_sizes <- seq(refine_blocksize, final_reft_size,
+                        refine_blocksize)
+  if (is.null(cumn_over_maxit))
+    cumn_over_maxit <- TRUE
+  first_refine_ntot <- 2L * subblock_size
+  if (first_refine_ntot != reftable_sizes[1L])
+    reftable_sizes <- c(first_refine_ntot, reftable_sizes)
+  if (final_reft_size != tail(reftable_sizes, 1L))
+    reftable_sizes <- c(reftable_sizes, final_reft_size)
+  subblock_nbr <- 2L * subblock_nbr
+  subblock_size <- subblock_size/2L
+  mget(ls(), environment())
+}
+
+.dflt_final_size <- function(nvar) 1000L * round(nvar*3/2-1)  
+
+.subblock_nbr <- function(dflt_final_size, refine_blocksize) {
+  dflt_refine_blocksize <- max(1000L, # for npar=1...
+                               (1000L*( dflt_final_size %/% 3000)))
+  div <- 100*log(dflt_refine_blocksize + 
+                   0.07*exp((dflt_refine_blocksize/1000)^0.8))
+  # integer version of refine_blocksize/div:
+  divisors <- seq(2L,max(4L,dflt_refine_blocksize/div))
+  max(divisors[(refine_blocksize %% (2L*divisors))==0L])
+}
+
 
 .get_workflow_design <- function(npar, 
                                  n_proj_stats=npar,
@@ -1690,49 +1759,53 @@ focal_refine <- function(object, focal, size, plotprof=TRUE, ...) {
                                  subblock_nbr=NULL,
                                  init_reft_size=NULL,
                                  cumn_over_maxit=NULL,
-                                 test_fac=NULL
+                                 fac = NULL 
 ) {
   nvar <- npar+n_proj_stats+n_latent # dim of completedens
-  if (is.null(final_reft_size)) final_reft_size <- 
-      1000L * round(nvar*3/2-1)
+  dflt_final_size <- .dflt_final_size(nvar)
+  if (is.null(final_reft_size)) final_reft_size <- dflt_final_size
     ## more simuls from nvar>=30 (certainly preferable for precision but less simple) 
     # 1000L* pmax(round(nvar*3/2-1), round( pmax(1000L*nvar, 50L*nvar^2)/1000))
-  if ( ! is.null(test_fac)) {
-    final_reft_size <- final_reft_size*test_fac
+  
+  if ( length(fac)) {
+    final_reft_size <- round(final_reft_size*fac)
     if (is.null(refine_blocksize)) {
-      refine_blocksize <- max(1000L*test_fac, # for npar=1...
-                              (1000L*test_fac*( final_reft_size %/% (3000*test_fac))))
+      refine_blocksize <- max(1000L*fac, # for npar=1...
+                              (1000L*fac*( final_reft_size %/% (3000*fac))))
       # => ~ refine_blocksize= 1000L * (2npar-1)
     }
   } else {
     # maybe 1000L * round( pmax(2500L*npar, 160L*npar^2)/1000) ?
-    # Save 3 or 4 sizes:
+    # Save 3 or 4 sizes, multiples of 1000L
     if (is.null(refine_blocksize)) {
       refine_blocksize <- max(1000L, # for npar=1...
                               (1000L*( final_reft_size %/% 3000)))
     }
   }
+  # get_workflow_design(npar=2L, test_fac=1/1.666) is instructive:
+  # round(refine_blocksize) %% 2L gets intended result where refine_blocksize %% 2L might not otherwise.
+  refine_blocksize <- as.integer(round(4L * refine_blocksize %/% 4L)) # multiple of 4L
   if (is.null(subblock_nbr)) {
-    divisors <- seq(2,max(4L,refine_blocksize/(100*log(refine_blocksize))))
-    subblock_nbr <- max(divisors[(refine_blocksize %% divisors)==0L])
-    rm("divisors")
-  }
-  subblock_size <- refine_blocksize/subblock_nbr 
-  if (is.null(init_reft_size)) init_reft_size <- min(refine_blocksize/5L,1000L)
+    subblock_nbr <- .subblock_nbr(dflt_final_size, refine_blocksize)
+    # rather sharp transition near refine_blocksize ~25000 from
+    # subblock_nbr ~ refine_blocksize/(div ~ 100*log(refine_blocksize))
+    # to (very ~)
+    # subblock_nbr ~ refine_blocksize^(0.2)/0.39
+    # ie from rapid to slow increase in subblock_nbr.
+    # !!! : smaller steps:
+    subblock_nbr <- 2L*subblock_nbr
+  } 
+  rm(list="dflt_final_size")
+  subblock_size <- as.integer(round(refine_blocksize / subblock_nbr)) # sigh
+  first_refine_ntot <- min(4L*subblock_size,refine_blocksize)
+  
+  if (is.null(init_reft_size)) init_reft_size <- min(round(refine_blocksize / 5L),1000L)
   reftable_sizes <- seq(refine_blocksize,final_reft_size, refine_blocksize) 
   if (is.null(cumn_over_maxit)) cumn_over_maxit <- TRUE
-  first_refine_ntot <- 2L*subblock_size
-  if (first_refine_ntot != 
+  if (first_refine_ntot < 
       reftable_sizes[1L]) reftable_sizes <- c(first_refine_ntot, reftable_sizes)
-  if (final_reft_size != 
+  if (final_reft_size > 
       tail(reftable_sizes,1L)) reftable_sizes <- c(reftable_sizes, final_reft_size)
-  # !!! : smaller steps:
-  subblock_nbr <- 2L*subblock_nbr
-  # sapply(seq(20)*2L, function(npar) get_workflow_design(npar)$subblock_nbr) :
-  # 8  8 10 14 18 22 26 30 34 38 42 40 40 50 50 50 60 56 50 60
-  subblock_size <- subblock_size/2L
-  # sapply(seq(20)*2L, function(npar) get_workflow_design(npar)$subblock_size) :
-  # 125 375 500 500 500 500 500 500 500 500 500 575 625 540 580 620 550 625 740 650
   mget(ls(), environment())
 }
 
@@ -1740,10 +1813,12 @@ get_workflow_design <- function(npar,
                                 n_proj_stats=npar,
                                 n_latent=0L,
                                 final_reft_size=NULL,
+                                init_reft_size=NULL,
                                 refine_blocksize=NULL,
                                 subblock_nbr=NULL,
                                 version=Infusion.getOption("version"),
                                 cumn_over_maxit=NULL,
+                                fac= test_fac,
                                 test_fac=NULL) {
   version <- as.package_version(version)
   if (version < "2.1.76") {
@@ -1751,14 +1826,25 @@ get_workflow_design <- function(npar,
   } else if (version < "2.1.88") {
     wf <- .get_workflow_design_2.1.87(npar, cumn_over_maxit=cumn_over_maxit)
   } else if (version < "2.1.163") {
-    wf <- .get_workflow_design_2.1.162(npar, cumn_over_maxit=cumn_over_maxit)
+    wf <- .get_workflow_design_2.1.162(npar, cumn_over_maxit=cumn_over_maxit, 
+                                       test_fac=test_fac)
+  } else if (version < "2.3.4") {
+    wf <- .get_workflow_design_2.3.0(npar, n_proj_stats=n_proj_stats, 
+                                     n_latent=n_latent,
+                                     final_reft_size=final_reft_size,
+                                     init_reft_size=init_reft_size,
+                                     refine_blocksize=refine_blocksize,
+                                     subblock_nbr=subblock_nbr,
+                                     cumn_over_maxit=cumn_over_maxit,
+                                     test_fac=test_fac)
   } else wf <- .get_workflow_design(npar, n_proj_stats=n_proj_stats, 
                                     n_latent=n_latent,
                               final_reft_size=final_reft_size,
+                              init_reft_size=init_reft_size,
                               refine_blocksize=refine_blocksize,
                               subblock_nbr=subblock_nbr,
                               cumn_over_maxit=cumn_over_maxit,
-                              test_fac=test_fac)
+                              fac=fac)
   if (version < "2.1.184.2") { ## older version of maxnbCluster():
     ## # of df for the different models: CeleuxG95
     ## Full MGM model has P = (nc*(nc+3)/2 +1)G-1) params but this has used 
@@ -1887,6 +1973,37 @@ get_workflow_design <- function(npar,
   }
   instr_postdens
 }
+
+# Late-introduced extractor, still sparsely used.
+.get_conditional_GMM <- function(object,
+                                 jointdens=object$jointdens, 
+                                 given, expansion=1) {
+  # instrumental dens for sampling will now be the 'instr_postdens'
+  if (inherits(jointdens,"dMixmod")) { # using="Rmixmod" or "devel"
+    conddens <- .conditional_Rmixmod(jointdens, given=given, expansion=expansion)
+  } else if (inherits(object$jointdens,"dMclust")) {
+    conddens <- .conditional_dMclust(jointdens, given=given, expansion=expansion, 
+                                           using=object$using)
+  } else if (inherits(object$gllimobj,"gllim")) {
+    stop("Yet unhandled case (gllim object).") # this case is +/- deprecated
+    # The template code below may or may not work when fittedPars are replaced by more general variables
+    # One would have to re-examine the structure of the object produced by this +/- deprecated method. 
+    fittedPars <- object$colTypes$fittedPars 
+    givenParNames <- intersect(names(given),fittedPars)
+    if (length(givenParNames)) { # that's super ugly...
+      conddens <- .conditional_gllimobj(object$gllimobj, fittedPars=fittedPars, 
+                                              given=given[givenParNames], expansion=expansion)
+    } else conddens <- object$gllimobj
+  } else if (inherits(jointdens,"MAF")) { 
+    if (length(grep("MAFmix",object$using)) &&
+        is.null(jointdens) # i.e. default 'jointdens' value for 'MAFmix' case 
+      ) {
+      conddens <- .conditional_Rmixmod(object$MGMjointdens, given=given, expansion=expansion)
+    } else stop("Yet unhandled MAF variant case ($using != 'MAFmix'), with default 'jointdens' at least.")
+  } else stop("Yet unhandled case of object's $using and 'jointdens' value.")
+  conddens
+}
+
 
 .calc_instr_densities <- function(object, 
                                   instr_dens, # typically the parameters' instrumental posterior 
@@ -2260,22 +2377,48 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
   boo[] <- simul
   if (debug_level<2L) { # return valid, NULL or try-error
     densv <- suppressWarnings( ## suppress warnings for clustering failure
-      try(infer_SLik_joint(boo,stat.obs=stat.obs, nbCluster=nbCluster_SVs, using=using,
-                           verbose=list(most=FALSE,final=FALSE, constr_crits=constr_crits,
-                                        latentVars=old_object$colTypes$latentVars)),silent=TRUE))
+      try(.infer_SLik_joint(boo,stat.obs=stat.obs, nbCluster=nbCluster_SVs, using=using,
+                            initParam=.get_initParam(old_object),
+                            verbose=list(most=FALSE,final=FALSE, constr_crits=constr_crits),
+                            latentVars=old_object$colTypes$latentVars # attr(boo,"latentVars") if API infer_SLik_joint() is used...
+          ), silent=TRUE))
     if (inherits(densv,"try-error") && debug_level==0L) {
       return(NULL) ## used in which valid <- which( ! sapply(resu,is.null)) below
     } 
   } else { # return error -> useful in serial mode only
     densv <- suppressWarnings( ## suppress warnings for clustering failure
-      infer_SLik_joint(boo,stat.obs=stat.obs, nbCluster=nbCluster_SVs, using=using,
-                       verbose=list(most=FALSE,final=FALSE, constr_crits=constr_crits,
-                                    latentVars=old_object$colTypes$latentVars)))
+      .infer_SLik_joint(boo,stat.obs=stat.obs, nbCluster=nbCluster_SVs, using=using,
+                        initParam=.get_initParam(old_object),
+                        verbose=list(most=FALSE,final=FALSE, constr_crits=constr_crits),
+                        latentVars=old_object$colTypes$latentVars))
 
       }
   densv
 }
 
+.get_nbClu_from_GMM <- function(info) {
+  if (inherits(info,"dMixmod")) {
+    info@nbCluster
+  } else if (inherits(info,"dMclust")) {
+    info$G
+  }else if (inherits(info,"gllim")) {
+    length(info$pi)
+  }
+}
+
+.get_nbCluster_SVs <- function(simuland, object) {
+  if (inherits(simuland,c("dMixmod","dMclust"))) {
+    j_info <- object$jointdens
+    p_info <- object$pardens
+  } else if (inherits(simuland,"MAF")) {
+    j_info <- object$MGMjointdens# exists and needed in MAFmix case.
+    p_info <- NULL
+  } else if (inherits(simuland,"gllim")) {
+    j_info <-  p_info <- object$gllimobj
+  }
+  list(jointdens=.get_nbClu_from_GMM(j_info),
+       pardens=.get_nbClu_from_GMM(p_info)) # single values so that this exposes to clustering failure.
+}
 
 # Called by .RMSEwrapper.SLik_j();
 # this does not call the process-simulating function. Instead, it performs a sort of parametric bootstrap from the Gaussian mixture model,
@@ -2290,12 +2433,11 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
   if (!force && boot_nsim<2L) stop("'boot_nsim' must be > 1")
   simuland <- object$completedens
   if (is.null(simuland)) simuland <- object$jointdens
+  nbCluster_SVs <- .get_nbCluster_SVs(simuland, object)
   if (inherits(simuland,"dMixmod")) { # using="Rmixmod" or "devel"
     bootrepls <- .simulate.MixmodResults(simuland, n_tables=boot_nsim, size=nrow(object$logLs),
                                          drop=FALSE,
-                                         norm_or_t=.wrap_rmvnorm) # simulates 10 (projected) reftables in parametric bootstrap spirit.
-    nbCluster_SVs <- list(jointdens=object$jointdens@nbCluster,
-                          pardens=object$pardens@nbCluster) # single values so that this exposes to clustering failure.
+                                         norm_or_t=.wrap_rmvnorm) # simulates boot_nsim (projected) reftables in parametric bootstrap spirit.
   } else if (inherits(simuland,"dMclust")) {
     if (object$using=="mclust") {
       bootrepls <- replicate(boot_nsim, 
@@ -2306,20 +2448,14 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
                                   .simVVV_rmvnorm_or_t(parameters=simuland$parameters,
                                                   n=nrow(object$logLs),use_rmvt=FALSE)[,-1L],
                                   simplify=FALSE)
-    nbCluster_SVs <- list(jointdens=object$jointdens$G,
-                          pardens=object$pardens$G)
   } else if (inherits(simuland,"MAF")) { # using="mafR"
     bootrepls <- replicate(boot_nsim, expr = {
-      .simulate.MAF(simuland, nsim= nrow(object$logLs), given=NULL) # (____F I X M E___) untested
+      .simulate.MAF(simuland, nsim= nrow(object$logLs), given=NULL) # unconditional MAF simulation.
     },
     simplify=FALSE)
-    nbCluster_SVs <- list()
   } else if (inherits(object$gllimobj,"gllim")) {
     bootrepls <- .simulate.gllimX(object$gllimobj, n_tables=boot_nsim, size=nrow(object$logLs),
                                   parNames=object$colTypes$fittedPars) 
-    nclu <- length(object$gllimobj$pi)
-    nbCluster_SVs <- list(jointdens=nclu, pardens=nclu)
-    
     bootrepls <- .gllim.condsimul.stats(object$gllimobj, RGPpars=bootrepls, size=1L, drop=FALSE, cbind.=TRUE, 
                                  colTypes=object$colTypes) 
   } 
@@ -2397,7 +2533,8 @@ profile.SLik_j <- function(fitted, value, fixed=NULL, return.optim=FALSE,
     locdata <- object$MSL$MSLE # vector
   }
   #
-  bootrepls <- .boot.SLik_j(object,boot_nsim=boot_nsim,verbose=verbose,cluster_args=cluster_args) # returns gaussian mixture models for each resample; no MSL as not needed
+  bootrepls <- .boot.SLik_j(object,boot_nsim=boot_nsim,verbose=verbose,
+                            cluster_args=cluster_args) # returns objects of class SLik_j with gaussian mixture models, for each resample; no MSL as not needed
   pred_data <- object$logLs[,object$colTypes$fittedPars, drop=FALSE]
   logLpreds <- vector("list", length(bootrepls)) 
   for (it in seq_along(bootrepls)) {

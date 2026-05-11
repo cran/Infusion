@@ -35,7 +35,7 @@ get_projector(...) # alias for project.character
 get_projection(...) # alias for project.default
 
 ##
-deforest_projectors(object)
+deforest_projectors(object, deep_copy=FALSE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -86,6 +86,9 @@ Whether to print some information or not. In particular, \code{TRUE}, true-vs.-p
   \item{object}{
 An object of class \code{SLik_j}.
 }
+ \item{deep_copy}{
+ Boolean: whether to deep-copy the environment that contains the projections, or not. This controls whether the original object is modified or not, and the class of the return value (see Value). \code{deep_copy=TRUE} is advised if you want to save a (smaller) copy of the inference object in a file, but want to keep the original object unmodified for further use.  
+}
   \item{\dots}{
 Further arguments passed to or from other functions. Currently, they are passed to \code{plot}.
 }
@@ -125,9 +128,9 @@ Using deep learning seems attractive but the benefits over \code{"ranger"} are n
 \value{
   \code{project.character} returns an object of the class returned by the called \code{method} (by default, a \code{ranger} object for the up-to-date workflow).
   
-  \code{project.default} returns an object of the same class and structure as the input \code{x}, containing the variables named in the \code{projectors} argument, each variable being a projected statistics inferred from the input summary statistics, or a summary statistic copied from the input \code{x} (if an \bold{explicit} NULL projector was included for this statistic in the \code{projectors} argument).
+  \code{project.default} returns an object of the same class and structure as the input \code{x}, containing the variables named in the \code{projectors} argument, each variable being a projected statistics inferred from the input summary statistics. Input summary statistics are removed, except any one given as the name of an \bold{explicit} NULL projector included in the \code{projectors} argument).
   
-  \code{deforest_projectors} is used for its side effect  (the contents of an environment within the input object been modifed), and returns a character string emphasizing this feature.
+  \code{deforest_projectors(., deep_copy=FALSE)} is used for its side effect  (the contents of an environment within the input object been modifed), and returns a character string emphasizing this feature. By contrast, \code{deforest_projectors(., deep_copy=TRUE) does not modifies the input object, and returns its modified version.} 
 }
 \references{
   Breiman, L. (2001). Random forests. Mach Learn, 45:5-32. <doi:10.1023/A:1010933404324>

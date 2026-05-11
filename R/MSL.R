@@ -221,7 +221,7 @@ check_raw_stats <-
                                 newobs=t(get_from(object,"proj_data")), 
                                 MSLE,# =object$MSL$MSLE, # alternative newobs and alternative MSLE used in.ecdf_2lr
                                 which="safe") { 
-  X <- object$logLs[,object$colTypes$fittedPars]
+  X <- object$logLs[,object$colTypes$fittedPars, drop=FALSE]
   parname <- names(given)
   ontheright <- given>MSLE[parname]
   ### Find best point beyond the 'given' value:
@@ -512,12 +512,10 @@ MSL <- function (object,
   # pred_data <- object$logLs[recent,fittedPars, drop=FALSE] 
   object$thr_info <- .calc_pardens_thr_info(object=object, fittedPars=fittedPars, level=level)
   if (inherits(object,"SLik_j")) { # reset all envs that keep results of boot with BGP potentially = MSLE 
-    object$bootLRTenv <- list2env(list(bootreps_list=list()),
-                                  parent=emptyenv())
-    object$bootCIenv <- list2env(list(bootreps_list=list()),
-                                   parent=emptyenv())
-    object$CIobject <- list2env(list(CIs=NULL),
-                                parent=emptyenv())
+    object$bootLRTenv <- list2env(list(bootreps_list=list()), parent=emptyenv())
+    object$bootCIenv <- list2env(list(bootreps_list=list()), parent=emptyenv())
+    object$CIobject <- list2env(list(CIs=NULL), parent=emptyenv())
+    object$misc_env <- list2env(list(), parent=emptyenv())
   }
   if (is.null(init)) {
     if (inherits(object,"SLik_j")) {
@@ -623,6 +621,9 @@ MSL <- function (object,
                                 parent=emptyenv())  ## may be NULL
   } 
   # MSEs computation
+  # Note that ad-hoc environments are over-written in each MSL() call 
+  # so MSL() does not change 'in place' the content of a permanent environment.
+  # To achieve the latter effet, use get_from().
   if (inherits(object$fit,"HLfit")) {
     object$RMSEs <- list2env(list(RMSEs=.RMSEwrapper(object,verbose=FALSE),
                                   warn=NULL),

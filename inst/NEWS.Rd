@@ -3,10 +3,23 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.3.12}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item 'fac' argument of get_workflow_design().
+\item New function get_trypoints().
+\item Faster evaluation of the RMSEs given by MSL(.,eval_RMSEs=TRUE) and related get_from() calls.
+\item New function C2ST() returning a classifier test diagnosing the quality of the likelihood surface inference.
+\item 'deep_copy' argument of deforest_projectors(). 
+\item 'precision' argument of refine() can now also be a function, allowing more complex termination conditions to be specified.
+\item 'test_cuda' argument of config_mafR().
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.3.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
-\item New default values of "type" and "reset" arguments of confint.SLik_j().
+\item New default values of 'type' and 'reset' arguments of confint.SLik_j().
 \item 'seq_nbCluster' package option replaced by 'nbClu_pow_rule_fn' option, which implements a slightly different rule, documented in help for get_nbCluster_range().
 \item new graphic defaults.
 \item EMCluster can be selected as an alternative to Rmixmod for the clustering step, by the 'using' argument of infer_slik_joint(), or globally by the 'mixturing' package option.
@@ -91,7 +104,7 @@
 \subsection{USER-LEVEL CHANGES}{
 \itemize{
 \item The structure of 'SLik_j' objects has been modified, meaning that the result of running infer_SLik_joint() has to be re-generated to be compatible with functions of which this object is an argument. 
-\item add_reftable() and add_simulation() gain argument 'parsTable' with is an alias (and now the preferred name) for pre-existing argument 'par.grid'. 
+\item add_reftable() and add_simulation() gain argument 'parsTable' which is an alias (and now the preferred name) for pre-existing argument 'par.grid'. 
 }
 }
 \subsection{UP-TO-DATE WORKFLOW}{

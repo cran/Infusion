@@ -10,7 +10,8 @@ if (Infusion.getOption("example_maxtime")>9) {
   Sobs <- myrnorm(mu=4,s2=1) 
   # With constraints (the final plot explains the constraint):
   heart <- quote({ x <- 3*(mu-4.25);  y <- 3*(s2-0.75); x^2+(y-(x^2)^(1/3))^2-1})
-  parsp_h <- init_reftable(lower=c(mu=2.8,s2=0.4), upper=c(mu=5.2,s2=2.4)
+  parsp_h <- init_reftable(lower=c(mu=2.8,s2=0.4), upper=c(mu=5.2,s2=2.4),
+                          nUnique=2000L,  
                            #, constr_crit=heart
                            )
   simuls_h <- add_reftable(Simulate="myrnorm", parsTable=parsp_h)

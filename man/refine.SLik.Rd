@@ -6,14 +6,19 @@
 \alias{refine.SLikp}
 \alias{reproject}
 \alias{recluster}
+\alias{get_trypoints}
 \title{
   Refine estimates iteratively    
 }
 \description{
   \code{refine} is a generic function with methods for objects of the classes produced by \code{\link{MSL}}. In the up-to-date workflow, it can automatically (1) define new parameters points, (2) add simulations to the reference table for these points, (3) optionally recompute projections, (4) update the inference of the likelihood surface, and (5) provides new point estimates, confidence intervals, and other results of an \code{\link{MSL}} call. It can repeat these steps iteratively as controlled by its \code{workflow_design}. 
-Although it has many control arguments, few of them may be needed in any application. In particular it is designed to use reasonable default controls for the number of iterations, the number of points added in each iteration, and whether to update projections or not, when given only the current fit object as input.
   
-\code{reproject} and \code{recluster} are wrappers for \code{refine(..., ntot=0L)}, updating the object after either recomputing the projections or only re-performing the multivariate gaussian mixture clustering.
+Although it has many control arguments, few of them may be needed in any application. In particular it is designed to use reasonable default controls for the number of iterations, the number of points added in each iteration, and whether to update projections or not, when given only the current fit object as input.
+New parameter points automatically satisfy any optional parameter constraint specified at the initial \code{\link{infer_SLik_joint}} call (see \code{\link{constr_crits}}).
+  
+\code{reproject} and \code{recluster} are wrappers for \code{refine(..., ntot=0L)}, updating the object after either recomputing the projections or only re-performing the multivariate gaussian mixture clustering. 
+
+\code{get_trypoints} is a wrapper for \code{refine(..., Simulate=NULL)} whose possible usage is described in the Details section.
 }
 \usage{
 \method{refine}{SLik}(object, method=NULL, ...)
@@ -62,6 +67,7 @@ Although it has many control arguments, few of them may be needed in any applica
             
 reproject(object, eval_RMSEs = NULL, CIs = NULL, ...)
 recluster(object, eval_RMSEs = NULL, CIs = NULL, update_projectors=FALSE, ...)
+get_trypoints(object, nsim, ..., progress)
 }
 \arguments{
   \item{object}{
@@ -98,25 +104,23 @@ an \code{SLik} or \code{SLik_j} object
   \item{workflow_design}{
     A list structured as the return value of \code{\link{get_workflow_design}}. The default value makes reference to elements of the input object's \code{colTypes} element.}
   \item{maxit}{
-  Maximum number of iterative refinements (see also \code{precision} argument).
+  Maximum number of iteration for one \code{refine} call (see also \code{precision} argument). The default action, as controlled by the default value of \code{workflow_design} is essentially to \bold{ignore this control as a termination condition} (although it may still affect other features of the workflow design), and to perform enough iterations for \code{ntot} points to be added to the reference table.
 }
   \item{ntot}{
-    NULL or numeric: control of the total number of simulated samples (one for each new parameter point) to be added to the reference table over the \code{maxit} iterations.  See Details for the rules used to determine the number of points added in each iteration. Reasonable default values are defined for \code{ntot} and \code{maxit} (see Details), so that beginners (and ideally, even more advanced users) do not have to find good values.
-
-\code{ntot=0L} may be used to re-generate the projectors or the clustering without augmenting the reference table.
+    NULL or numeric: control of the total number of simulated samples (one for each new parameter point) to be added to the reference table over the iterations.  See Details for the rules used to determine the number of points added in each iteration. Reasonable default values are defined for \code{ntot} and \code{maxit} (see Details), so that users do not have to find good values.\cr
+\verb{ }The \code{reproject} and \code{recluster} functions internally use \code{ntot=0L} to re-generate the projectors or the clustering without augmenting the reference table.
   }
   \item{n}{
-NULL or numeric, for a number of parameter points (excluding replicates and confidence interval points in the primitive workflow), whose likelihood should be computed in each iteration 
-(see \code{n} argument of \code{\link{sample_volume}}). Slightly less intutive alternative to \code{ntot} specification, as there is at least one iteration where the actual number of added points is not the nominal \code{n} (see Details).   
+NULL or numeric. Originally conceived for the primitive workflow, and better ignored otherwise. Specifies a number of parameter points, excluding replicates and confidence interval points in the primitive workflow, whose likelihood should be computed in each iteration 
+(see \code{n} argument of \code{\link{sample_volume}}). Slightly less intuitive alternative to \code{ntot} specification, as there is at least one iteration where the actual number of added points is not the nominal \code{n}.   
 \code{n=0L} will have the same effect as \code{ntot=0L}.
 }
 \bold{## termination conditions}
-  \item{precision}{
-    Requested local precision of surface estimation, in terms of prediction standard errors (RMSEs) of both the maximum summary log-likelihood and the likelihood ratio at any CI bound available. Iterations will stop when either \code{maxit} is reached, or if the RMSEs have been computed for the object (see \code{eval_RMSEs} argument) and this precision is reached for the RMSEs.
-    A given precision on the CI bounds themselves might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
-  }
   \item{eval_RMSEs}{Same usage as for \code{CIs}; controls the \code{eval_RMSEs} argument of \code{\link{MSL}} in each iteration. See Details for the default. 
-  The default for \code{reproject} is to update the RMSEs if there are computed ones within the input \code{object}.}
+  The default for \code{reproject} is to update the RMSEs if previously computed ones are present within the input \code{object}.}
+  \item{precision}{
+    Numeric of function. Provides a sufficient condition for termination of the iterations: if \code{precision} is numeric (the default), the condition is that all RMSEs should be lower than the given \code{precision}; otherwise the condition is the one returned by the \code{precision} function, which should take the vector of RMSEs (as returned by \code{get_from(., "RMSEs")}) as single argument.
+  }
 \bold{## verbosity}
   \item{verbose}{ A list as shown by the default, or simply a vector of booleans. \code{verbose$most} controls whether to display information about progress and results, except plots; \code{$final} controls whether to \code{plot()} the final \code{object} to show the final likelihood surface. Default is to plot it only in an interactive session and if fewer than three parameters are estimated; \code{$movie} controls whether to \code{plot()} the updated \code{object} in each iteration; \code{verbose$proj} controls the \code{verbose} argument of \code{\link{project.character}}; \code{verbose$rparam} controls (cryptic) information about generation of new parameter points; \code{verbose$progress_bars} controls display of some progress bars. If \code{verbose} is an unnamed vector of booleans, they are interpreted as as-many first elements of the\code{verbose} vector, in the order shown by the default. 
   }
@@ -149,6 +153,12 @@ NULL or numeric, for a number of parameter points (excluding replicates and conf
 \item{rparamFn}{
   Function used to sample new parameter values.
 }
+  \item{nsim}{
+  numeric: number of parameter points to be returned.
+  }
+  \item{progress}{
+  boolean: whether to report progress of the \code{get_trypoints} computation.
+  }
   \item{\dots}{
 further arguments passed to or from other methods. \code{refine} passes these arguments to the \code{plot} method suitable for the \code{object}. 
 }
@@ -160,10 +170,15 @@ Each \code{refine} call performs several iterations, these iterations stopping w
 
 CIs and RMSEs may be computed in any iteration but the default values of \code{eval_RMSEs} and \code{CIs} are chosen so as to avoid performing these computations too often, particularly when they are expected to be slow. The default implies that the RMSE for the maximum logL will be computed at the end each block of iterations that defines a refine (itself defined to reach to reference table sizes specified by the \code{workflow_design} and its default value). If the reference table is not too large (see default value of \code{useCI} for the precise condition), RMSEs of the logL are also computed at the inferred bounds of profile-based confidence intervals for each parameter. 
 
-Although the \code{update_projectors} argument allow similar control of the iterations where projections are updated, it is advised to keep it NULL (default value), so that whether projectors are updated in a given iteration is controlled by default internal rules. Setting it to \code{TRUE} would induce updating whenever any of the target reference table sizes implied by the \code{workflow_design$subblock_sizes} is reached. The default \code{NULL}, as the same effect subject to additional conditions: updating may not be performed when the training set is considered too similar to the one used to compute pre-existing projections, or when the train set includes more samples than the limit define by the global package option \code{upd_proj_subrows_thr}
+Although the \code{update_projectors} argument allow similar control of the iterations where projections are updated, it is advised to keep it NULL (default value), so that whether projectors are updated in a given iteration is controlled by default internal rules. Setting it to \code{TRUE} would induce updating whenever any of the target reference table sizes implied by the \code{workflow_design$subblock_sizes} is reached. The default \code{NULL}, as the same effect subject to additional conditions: updating may not be performed when the training set is considered too similar to the one used to compute pre-existing projections, or when the train set includes more samples than the limit define by the global package option \code{upd_proj_subrows_thr}.
+
+iterations will stop when either \code{maxit} is reached, or if the RMSEs for likelihood ratio values have been computed for the object (see \code{eval_RMSEs} argument) and the condition specified by \code{precision} is reached for the RMSEs. A condition on RMSEs of point estimates or CI bounds of inferred parameters might seem more interesting, but is not well specified by a single precision parameter if the parameters are on widely different scales.
 
 Default values of \code{ntot} and \code{maxit} are controlled by the value of the \code{workflow_design}, which itself has the shown default value, and are distinct for the first vs. subsequent \code{refine}s. 
 The target number of points in each iteration is also controlled differently for the first vs. subsequent \code{refine}s. This design is motivated by the fact that the likelihood surface is typically poorly inferred in the first refine so that the parameter points sampled then tend to be less relevant than those that can be sampled in later iterations. In the first \code{refine} call, the target number of points increases roughly as powers of two over iterations, to reach \code{ntot} cumulatively after \code{maxit} iterations. The default \code{ntot} is twice the size of the initial reference table, and the default \code{maxit} is 5. The \code{\link{example_reftable}} Example illustrates this, where the initial reference table holds 200 simulations, and the default target number of points to be added in 5 iterations by the first \code{refine} call are 25, 25, 50, 100 and 200.  In later \code{refine} calls, the target number is \code{ntot/maxit} in each iteration.
+
+This default design of the number of points added in each iteration may be overcome by using the \code{get_trypoints} function to get exactly a given number of new parameter points. \code{get_trypoints} calls \code{refine(..., Simulate=NULL)}, so it selects points exactly as internally done by \code{refine}, but it repeats such calls until the required number of parameter points is produced. The return value can be used as the \code{trypoints} argument of \code{refine}. This allows strict control of the number of points added to the reference table in a given iteration.      
+
 
 \code{ * }Independent \bold{control of parallelisation} may be needed in the different steps, e.g. if the simulations are not easily parallelised whereas the projection method natively handles parallelisation. In the up-to-date workflow with default \code{ranger} projection method, distinct parallelisation controls may be passed to \code{add_reftable} for sample simulations, to \code{project} methods when projections are updated, and to \code{MSL} for RMSE computations (alternatively for the primitive workflow, \code{add_simulation}, \code{infer_logLs} and \code{MSL} are called). 
 The most explicit way of specifying distinct controls is by a list structured as \preformatted{

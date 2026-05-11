@@ -21,13 +21,14 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
         print(colSums(timings))
         devAskNewPage(oldask) ## fixme: pb if dev.new has been called in-between 
       }
-      if (FALSE) { ## tests not included in package (using unpublished data, etc.)
+      if (FALSE) { ## tests not included in package (using unpublished data, or MAFs, etc.)
         if (TRUE) { # see above comment about Rstudio
           priv_testfiles <- dir(paste0(Infusion::projpath(),"/package/tests_private/"),pattern="*.R$",full.names = TRUE)
         } else {
           priv_testfiles <- dir(paste0(Infusion::projpath(),"/package/tests_private/"),full.names = TRUE)
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
         }
+        # oldopt <- Infusion.options(example_maxtime=131) # for long subcase in test-MAF
         priv_timings <- t(sapply(priv_testfiles, function(fich){
           cat(cli::col_green(paste0("\n",fich)))
           gc()
@@ -35,6 +36,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
+        # Infusion.options(oldopt)
         print(colSums(priv_timings)) # very roughly 1205.44 s elapsed for default maxtime (0.7) # much less after improving COMP
       }
       if (FALSE) { # slow and using several packages external to Infusion (but faster if one keeps the cache...)

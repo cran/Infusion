@@ -7,7 +7,7 @@ Simulate method for an \code{SLik_j} object.
 \description{
 \code{\link[stats]{simulate}} method for \code{SLik_j} objects, by default simulating realizations of the vector of projected summary statistics, drawn from their inferred distribution, given the summary-ML estimates which are the default value of the \code{given} argument. 
 
-For any non-default \code{given} argument, the sampling distribution is still deduced from the multivariate Gaussian mixture fit of the reference table, by conditioning it on \code{given} values. Any variable included in the mixture model may be included in \code{given}, allowing to simulate from other distributions than that of the vector of projected summary statistics.  
+For any non-default \code{given} argument, the sampling distribution is still deduced from the multivariate Gaussian mixture fit of the reference table, by conditioning it on \code{given} values. Any variable included in the mixture model may be included in \code{given}, allowing to simulate from other distributions than the one resulting from the default conditioning.  
 
 This usage should not be confused with simulating the sample-generating process, necessarily distinctly available to the user, and which does not rely on the mixture model stored in the fit object.
 Simulations of the sample-generating process for \code{given} parameter values can be obtained by setting non-default option \code{SGP=TRUE}.  

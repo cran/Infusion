@@ -10,10 +10,13 @@ Workflow design
 \usage{
 get_workflow_design(npar, n_proj_stats=npar, n_latent=0L,
                     final_reft_size=NULL,
+                    init_reft_size=NULL,
                     refine_blocksize=NULL, subblock_nbr=NULL,
                     version=Infusion.getOption("version"),
                     cumn_over_maxit = NULL,
-                    test_fac=NULL)
+                    fac= test_fac,
+                    test_fac = NULL
+                   )
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -28,6 +31,9 @@ get_workflow_design(npar, n_proj_stats=npar, n_latent=0L,
   \item{final_reft_size}{
   NULL, or integer specifying a non-default value of the final reference table size.
 }
+  \item{init_reft_size}{
+  NULL, or integer specifying a non-default value of the initial reference table size.
+}
   \item{refine_blocksize}{
   NULL, or integer specifying a non-default value of the number of points added per refine() call (except perhaps the first refine call in a workflow).
 }
@@ -40,8 +46,12 @@ get_workflow_design(npar, n_proj_stats=npar, n_latent=0L,
 \item{cumn_over_maxit}{
   logical; Whether to stop iteration when the target cumulative number of points is added to the reference table, or when the target number of iterations is first reached.
 }
+\item{fac}{
+  optional numeric value; redefines the final reference table size to \code{as.integer(\var{final_reft_size}*fac)}. Specifying \code{fac} usage is distinctly useful when \code{final_reft_size} is not specified, so that \var{final_reft_size} takes its default value. Default values of \code{refine_blocksize} and \code{subblock_nbr} will also be modified. 
+  For testing a workflow, it may be useful to run it with some \code{fac} < 1.
+}
 \item{test_fac}{
-optional numeric value; for testing a workflow, it may be useful to run it with smaller reference table sizes. \code{test_fac} specifies a reduction factor for these sizes, relative to the default design.
+optional numeric value; kept for back-compatibility: equivalent to \code{fac}.
 }
 }
 \value{

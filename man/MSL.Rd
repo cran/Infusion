@@ -5,7 +5,9 @@
   Maximum likelihood from an inferred likelihood surface
 }
 \description{
-This computes the maximum of an object of class \code{SLik} representing an inferred (summary) likelihood surface}
+This computes the maximum of an object of class \code{SLik} representing an inferred (summary) likelihood surface, and optionally other features (confidence intervals, measures of uncertainty of the likelihood surface).
+Some of the additional features can also be added to the object by using the separately documented \code{\link{get_from}} extractor.
+}
 \usage{
 MSL(object, CIs = prod(dim(object$logLs)) < 12000L, level = 0.95, 
     verbose = interactive(),

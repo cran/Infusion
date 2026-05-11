@@ -15,18 +15,19 @@ This functionality requires the \pkg{mafR} package, and is requested through the
 options that control the design of Masked Autoregressive Flows and their training.
 }
 \usage{
-config_mafR(torch_device, ...)
+config_mafR(torch_device, test_cuda=(torch_device=="cuda"), ...)
 MAF.options(template = "zuko-like", ...)
 }
 \arguments{
   \item{torch_device}{
 character: \code{"cpu"}, \code{"cuda"} (or \code{"cuda:0"}, etc., useful if several GPUs are available) or \code{"mps"}.
 }
+  \item{test_cuda}{Boolean: whether to test that cuda device can be used. Even when thsi condition is TRUE, the test is currently performed only when the Python session is initialized.}
   \item{template}{
 Defines a template list of options, subsequently modified by options specified through the \dots, if any.
 Possible values of \code{template} are \code{"zuko-like"}, \code{"PSM19"}, \code{NULL}, or a \code{list} of options. The default value \code{"zuko-like"} reproduces \pkg{Infusion}'s defaults. 
 }
-  \item{\dots}{For \code{MAF.options}: a named value, or several of them, that override or complete the \code{template} values. For \code{config_mafR}: for development purposes; not documented.
+  \item{\dots}{For \code{MAF.options}: a named value, or several of them, that override or complete the \code{template} values. For \code{config_mafR}: further arguments passed to \code{mafR::init_py_env}.
 }
 }
 \details{

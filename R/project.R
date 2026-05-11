@@ -343,8 +343,9 @@ project.character <- function(x,
                          type="quantiles", quantiles=quantiles, ...)$predictions[,1]
     }
   } else {
-    if (is.null(num.threads)) num.threads <- max(1L,Infusion.getOption("nb_cores")) # ranger's default is to use all cores!!!,
+    if (is.null(num.threads)) num.threads <- max(1L,Infusion.getOption("nb_cores")) # ranger's default was to use all cores!!!,
     # => NULL is distinct from 1L for ranger, and must be avoided.
+    # (default has been fixed in ranger v0.17, but it's now 2 so NULL still distinct from 1)
     
     # Cases where we do not assume the newdata=train set
     # (1) Then the first set of predictions potentially mixes inbag and oob

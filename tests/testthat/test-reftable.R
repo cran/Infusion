@@ -61,8 +61,15 @@ profile(slik_j,c(mu=4)) ## profile summary logL for given parameter value
 confint(slik_j,"mu") ## compute 1D confidence interval for given parameter
 plot1Dprof(slik_j,pars="s2",gridSteps=40) ## 1D profile
 # goftest(slik_j, nsim = 300L) # goodness of fit test
+get_from(slik_j,"C2ST")
 
-
+{
+  testthat::expect_true(! is.null(slik_1$projectors$MEAN$forest)) # TRUE
+  cp <- deforest_projectors(slik_1, deep_copy=TRUE)
+  testthat::expect_true(is.null(cp$projectors$MEAN$forest)) # TRUE
+  testthat::expect_true(! is.null(slik_1$projectors$MEAN$forest)) # still TRUE: original object unchanged. But
+  # deforest_projectors(slik_1); is.null(slik_1$projectors$MEAN$forest)
+}
 
 if (requireNamespace("xLLiM", quietly=TRUE)) { # workflow with xLLiM::gllim
   densvx <- infer_SLik_joint(corrSimuls,stat.obs=corrSobs, using="xLLiM")
@@ -75,6 +82,8 @@ if (requireNamespace("xLLiM", quietly=TRUE)) { # workflow with xLLiM::gllim
   slik_jx <- refine(slik_jx)
   SLRT(slik_jx, h0=slik_jx$MSL$MSLE+0.1, nsim = 100L) # LRT
   goftest(slik_jx, nsim = 300L) # goodness of fit test
+} else if (getOption("warn")==2) {
+  message("package 'xLLiM' not available for testing.")
 } else warning("package 'xLLiM' not available for testing.")
 
 if (FALSE) { # example of distinct trainsample
@@ -131,4 +140,6 @@ if (FALSE) { # 1-parameter example
   # etc:
   confint(slik_j1,"s2") ## compute 1D confidence interval for given parameter
   plot1Dprof(slik_j1,pars="s2",gridSteps=40) ## 1D profile
+  # 
+  get_from(slik_j1,"C2ST")
 }

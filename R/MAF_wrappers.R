@@ -7,6 +7,7 @@
   # if (.py_MAF_handle$is_set && ! reset && ! silent_ignore) {
   #   warning("Python environment already exists. Use reset=TRUE to overwrite it\n (possibly losing previous results).")
   # }
+  # mafR::get_py_MAF_handle() populates the Infusion:::.py_MAF_handle envir and returns it.
   .py_MAF_handle <- mafR::get_py_MAF_handle(envir=.py_MAF_handle, 
                                             reset=reset, torch_device=torch_device,
                                             GPU_mem=GPU_mem)
@@ -19,16 +20,25 @@
 
 
 config_mafR <- function(torch_device, 
-                        #reset=FALSE, 
+                        test_cuda=(torch_device=="cuda"),
                         ...) {
+  mc <- match.call()
   if (missing(torch_device)) torch_device <- .Infusion.data$options$torch_device
   if ( ( ! .one_time_warnings$GPU_warned ) && torch_device=="cpu" ) {
     warning("GPU will be ignored. See config_mafR(torch_device=.) to force its use.")
     .one_time_warnings$GPU_warned <- TRUE 
   }
+  
+  if ( ! reticulate::py_available(initialize = FALSE)) {
+    init_py_env <- get("init_py_env", asNamespace("mafR"), inherits=FALSE)
+    init_py_env(test_cuda=test_cuda, ...) # typically NOT cuda=TRUE in ...
+  }
+  # force all *.*get_py_MAF_handle() args so that ... used only by init_py_env() 
+  if (is.null(GPU_mem <- eval(mc$GPU_mem))) GPU_mem <- .Infusion.data$options$GPU_mem
   py_MAF_handle <- .get_py_MAF_handle(reset=TRUE, # reset, 
-                                      torch_device=torch_device, ...)
+                                      torch_device=torch_device, GPU_mem=GPU_mem)
   message("torch device set to '", py_MAF_handle$device$type,"'.")
+  
   invisible(NULL)
 }
 
@@ -96,7 +106,9 @@ config_mafR <- function(torch_device,
                       py_MAF_handle=.get_py_MAF_handle(), 
                       transforms=.Infusion.data$options$MAF_auto_layers, 
                       design_fac=.Infusion.data$options$MAF_design_fac, 
-                      Adam_learning_rate=.Infusion.data$options$Adam_learning_rate, 
+                      Adam_learning_rate=.Infusion.data$options$Adam_learning_rate,
+                      distribution="base",
+                      frozen_base=TRUE, 
                       ...) {
   allVars <- c(inferredvars, statNames)
   data <- as.matrix(data[,allVars, drop=FALSE])
@@ -111,20 +123,38 @@ config_mafR <- function(torch_device,
   
   captured <- switch(paste(as.integer(verbose)), "2"=c(), c("stdout"))
   time1 <- Sys.time()
-  py_output <- reticulate::py_capture_output(
-    MAF_object <- py_MAF_handle$MAF_density_estimation(y_train=train, 
-                                                      y_test=valida_set, 
-                                                      features=ncol(data), 
-                                                      transforms=transforms,      
-                                                      hidden_features=design$hidden_units, 
-                                                      randperm=FALSE, 
-                                                      max_epochs=500L, 
-                                                      batch_size=design$batch_size,
-                                                      device= .py_MAF_handle$device,
-                                                      patience=design$patience,
-                                                      learning_rate=Adam_learning_rate)
-    , type = captured)
-  attr(MAF_object, "train_time") <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1) ## spaMM:::.timerraw(time1)
+  if (packageVersion("mafR")> "1.1.9") { # super ugly but substitute() did not immediately work
+    py_output <- reticulate::py_capture_output(
+      MAF_object <- py_MAF_handle$MAF_density_estimation(y_train=train, 
+                                                         y_test=valida_set, 
+                                                         features=ncol(data), 
+                                                         transforms=transforms,      
+                                                         hidden_features=design$hidden_units, 
+                                                         randperm=FALSE, 
+                                                         max_epochs=500L, 
+                                                         batch_size=design$batch_size,
+                                                         device= .py_MAF_handle$device,
+                                                         patience=design$patience,
+                                                         learning_rate=Adam_learning_rate,
+                                                         distribution=distribution,
+                                                         frozen_base=frozen_base)
+      , type = captured)
+  } else {
+    py_output <- reticulate::py_capture_output(
+      MAF_object <- py_MAF_handle$MAF_density_estimation(y_train=train, 
+                                                         y_test=valida_set, 
+                                                         features=ncol(data), 
+                                                         transforms=transforms,      
+                                                         hidden_features=design$hidden_units, 
+                                                         randperm=FALSE, 
+                                                         max_epochs=500L, 
+                                                         batch_size=design$batch_size,
+                                                         device= .py_MAF_handle$device,
+                                                         patience=design$patience,
+                                                         learning_rate=Adam_learning_rate)
+      , type = captured)
+  }
+  attr(MAF_object, "train_time") <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1) 
   if (verbose==1L) {
     py_output <- strsplit(py_output, split="\n", fixed=TRUE)[[1]]
     cat(paste0("Output from MAF_density_estimation():\n",
@@ -143,6 +173,8 @@ config_mafR <- function(torch_device,
                            transforms=.Infusion.data$options$MAF_auto_layers,
                            design_fac=.Infusion.data$options$MAF_design_fac, 
                            Adam_learning_rate=.Infusion.data$options$Adam_learning_rate, 
+                           distribution="base",
+                           frozen_base=TRUE, 
                            ...) {
   data <- as.matrix(data)
   design <- .design_MAF(nr=nrow(data),
@@ -163,7 +195,8 @@ config_mafR <- function(torch_device,
   
   captured <- switch(paste(as.integer(verbose)), "2"=c(), c("stdout"))
   time1 <- Sys.time()
-  py_output <- reticulate::py_capture_output(
+  if (packageVersion("mafR")> "1.1.9") { # super ugly but substitute() did not immediately work
+    py_output <- reticulate::py_capture_output(
     MAF_object <- py_MAF_handle$MAF_conditional_density_estimation(train_y, train_x, valida_set_y, valida_set_x, 
                                                     features=length(outVars), 
                                                     context=length(givenVars), 
@@ -173,9 +206,26 @@ config_mafR <- function(torch_device,
                                                     max_epochs=500L, batch_size=design$batch_size,
                                                     device = py_MAF_handle$device,
                                                     patience=design$patience,
-                                                    learning_rate=Adam_learning_rate)
+                                                    learning_rate=Adam_learning_rate,
+                                                    distribution=distribution,
+                                                    frozen_base=frozen_base)
     , type = captured)
-  attr(MAF_object, "train_time") <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1) ## spaMM:::.timerraw(time1)
+  } else {
+    py_output <- reticulate::py_capture_output(
+      MAF_object <- py_MAF_handle$MAF_conditional_density_estimation(train_y, train_x, valida_set_y, valida_set_x, 
+                                                                     features=length(outVars), 
+                                                                     context=length(givenVars), 
+                                                                     transforms=transforms, 
+                                                                     hidden_features=design$hidden_units, 
+                                                                     randperm=FALSE, 
+                                                                     max_epochs=500L, batch_size=design$batch_size,
+                                                                     device = py_MAF_handle$device,
+                                                                     patience=design$patience,
+                                                                     learning_rate=Adam_learning_rate)
+      , type = captured)
+  }
+  attr(MAF_object, "train_time") <- round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 
+                                          3) ## more decimals for futile comparison with within-Python timing
   
   if (verbose==1L) {
     py_output <- strsplit(py_output, split="\n", fixed=TRUE)[[1]]
@@ -407,3 +457,30 @@ str.MAF <- function(object, ...) {
   }
   trypoints
 }
+
+# Conversion of parameters.
+# 'clu_params' are e.g. densv$pardens@parameters
+.Rmixmod2zukoGMM <- function(clu_params) {
+  nb_clu <- length(clu_params@proportions)
+  cov_dim  <- ncol(clu_params@mean)
+  
+  nb_components <- reticulate::r_to_py(nb_clu)
+  means <- reticulate::r_to_py(clu_params@mean)
+  mixture_weights <- reticulate::r_to_py(clu_params@proportions)
+  #
+  var_array <- array(unlist(clu_params@variance),dim = c(cov_dim,cov_dim,nb_clu))
+  covariance_matrix <- reticulate::r_to_py(aperm(var_array, c(3,1,2)) ) # aperm() <3
+  #
+  gmm_cov_type <- reticulate::r_to_py("full")
+  nb_features <- reticulate::r_to_py(cov_dim)
+  
+  py_MAF_handle <- .get_py_MAF_handle()
+  py_MAF_handle$to_zuko_gmm(
+    nb_components=nb_components, 
+    means=means, 
+    mixture_weights=mixture_weights, 
+    covariance_matrix=covariance_matrix, 
+    gmm_cov_type=gmm_cov_type, 
+    nb_features=nb_features)
+}
+

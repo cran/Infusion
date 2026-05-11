@@ -32,7 +32,8 @@ get_from.SLik <- function(object, which, raw=FALSE, force=FALSE, ...) {
         local_slik <- MSL(object, eval_RMSEs=TRUE, CIs=TRUE) # both needed for par_RMSEs
         local_env <- local_slik[["par_RMSEs"]]
         outer_env <- object[["par_RMSEs"]] 
-        for (st in ls(local_env)) assign(st,value = local_env[[st]],envir = outer_env)
+        # Copy in pre-existing envir of pre-existing object: feature of get_from(), not of simple MSL() call
+        for (st in ls(local_env)) assign(st,value = local_env[[st]],envir = outer_env) 
         resu <- object[["par_RMSEs"]]$par_RMSEs
       }
       return(resu)
@@ -45,6 +46,14 @@ get_from.SLik <- function(object, which, raw=FALSE, force=FALSE, ...) {
         for (st in ls(local_env)) assign(st,value = local_env[[st]],envir = outer_env)
       }
       resu <- object[["RMSEs"]]$RMSEs
+      return(resu)
+    } else if (which=="C2ST") {
+      misc_env <- object[["misc_env"]] # writes in this envir if it exists:
+      if (is.null(resu <- misc_env$C2ST) || force) misc_env$C2ST <- resu <- .twoSampTest(object, ..., method.="C2ST")
+      return(resu)
+    } else if (which=="MMD") {
+      misc_env <- object[["misc_env"]] # writes in this envir if it exists:
+      if (is.null(resu <- misc_env$MMD) || force) misc_env$MMD <- resu <- .twoSampTest(object, ..., method.="MMD")
       return(resu)
     }
   }
@@ -210,15 +219,22 @@ simulate.SLik_j <- function(object, nsim = 1L,
                             given=object$MSL$MSLE, 
                             norm_or_t=.wrap_rmvnorm, 
                             SGP=FALSE, ...) {
-  if (SGP) {
+  if (SGP) { # sample-generating process
     .simulate.SGP(object, nsim=nsim, given=given, ...)
   } else if (inherits(object$jointdens,"dMixmod")) {
     statdens_h0 <- .conditional_Rmixmod(object$jointdens, given=given, expansion=1) 
     .simulate.MixmodResults(statdens_h0, size=nsim, drop=TRUE,
                             norm_or_t=norm_or_t) # directly in projected space
   } else if (inherits(object$jointdens,"MAF")) {
-    if (is.null(dim(missing))) given <- t(given) # ugly but needed "somewhere" before reaching the Py conversion
-    .simulate.MAF(object$conddens,nsim=nsim, given=given)
+    # If using="c.mafR", object$conddens is a MAF, else it may be NULL; 
+    if (inherits(object$conddens,"MAF")) {
+      if (is.null(dim(given))) given <- t(given) # ugly but needed "somewhere" before reaching the Py conversion
+      .simulate.MAF(object$conddens,nsim=nsim, given=given) 
+    } else if (is.null(object$conddens)) {
+      # If using="MAFmix", there is no $conddens
+      # MAFmix provides two MAFs, $jointdens and $pardens, and a gaussian mixture, $MGMjoindens.
+      conddens <- .get_conditional_GMM(object,given=given)
+    } else stop("Case not yet considered.")
   } else if (inherits(object$jointdens,"dMclust")) {
     statdens_h0 <- .conditional_dMclust(object$jointdens, given=given, expansion=1, using=object$using) 
     if (object$using=="mclust") {
@@ -229,3 +245,99 @@ simulate.SLik_j <- function(object, nsim = 1L,
   } 
 }
 
+.mmd_biased <- function(XX, YY, XY, n1=nrow(XX), n2=nrow(YY)){
+  sum(XX)/(n1^2) + sum(YY)/(n2^2) - (2/(n1*n2))*sum(XY)
+}
+
+.mmd_unbiased <- function(XX, YY, XY, n1=nrow(XX), n2=nrow(YY)){
+  a <- (sum(XX)-sum(diag(XX)))/(n1*(n1-1L))
+  b <- (sum(YY)-sum(diag(YY)))/(n2*(n2-1L))
+  c <- (2/(n1*n2))*sum(XY)
+  a+b+c
+}
+
+..MMDtest <- function(mat, n1, n2, method=c("b","u"), nperm) {
+  if (n1<2L) stop("n1 sould be >1 !")
+  if (n2<2L) stop("n2 sould be >1 !")
+  method <- match.arg(tolower(method), c("b","u"))
+  id1 <- seq(n1)
+  ntot <- n1+n2
+  id2 <- (n1+1L):ntot
+  statfn <- switch(method,
+                   "b" = .mmd_biased,
+                   "u" = .mmd_unbiased)
+  
+  stat0 <- statfn(mat[id1,id1], mat[id2,id2], mat[id1,id2],n1=n1,n2=n2)
+  
+  statvec <- numeric(nperm)
+  for (i in seq_len(nperm)){
+    perm <- sample(ntot)
+    pid1 <- perm[id1]
+    pid2 <- perm[id2]
+    statvec[i] <- statfn(mat[pid1,pid1], mat[pid2,pid2], mat[pid1,pid2],n1=n1,n2=n2)
+  }
+  pvalue <- (sum(statvec>=stat0)+1L)/(nperm+1L)
+  list(p_value=pvalue, n1=n2, n2=n2, method=method, nperm=nperm)
+}
+
+# writes in misc_env as side effect
+.twoSampTest <- function(object, nsim=1000L, nperm=999L,  
+                         method.="C2ST", resimulate=FALSE, 
+                         Simulate=get_from(object,"Simulate"), 
+                         method="b", # for MMD
+                         check=FALSE
+                         ) {
+  statNames <- object$colTypes$statNames
+  fittedPars <- object$colTypes$fittedPars
+  nsim <- min(nrow(object$logLs), nsim)
+  X <- tail(object$logLs, nsim)
+  parsTable <- X[,fittedPars, drop=FALSE]
+  if (check) { # check unif distrib of p-values... 
+    # actually oob in C2ST then "under classifies": deficiency of low p-values
+    # so when oob is used in the real compar between Simulate() and simulate(), 
+    # and the two distribs differ, one may hae a sigmoid ecdf.
+    X <- vector("list", nsim)
+    for (it in seq_len(nsim))  X[[it]] <- simulate(object,1, given=unlist(parsTable[it,]))
+    X <- data.frame(do.call(rbind,X))
+    X <- cbind(parsTable, X)
+  } else if (resimulate) {
+    trypoints <- cbind(parsTable, object$colTypes$fixedPars) ## add fixedPars for simulation
+    trypoints <- trypoints[,object$colTypes$allPars,drop=FALSE] ## column reordering
+    X <- add_reftable(, Simulate = Simulate, parsTable = trypoints)
+    if (length(object$projectors)) X <- project(X, projectors=object$projectors)
+  } 
+  dgpS <- X[,c(fittedPars,statNames), drop=FALSE]
+  #
+  fitS <- vector("list", nsim)
+  for (it in seq_len(nsim))  fitS[[it]] <- simulate(object,1, given=unlist(parsTable[it,]))
+  fitS <- data.frame(do.call(rbind,fitS))
+  fitS <- cbind(parsTable, fitS)
+  #
+  if (method.=="C2ST") {
+    dgpS$.class <- "mgm"
+    fitS$.class <- "sample"
+    train <- rbind(fitS,dgpS)
+    train$.class <- as.factor(train$.class) 
+    form <- as.formula(paste(".class ~ ",paste(statNames,collapse="+")))
+    rf <- ranger(formula = form, data = train)
+    conf <- rf$confusion.matrix
+    object$misc_env$C2ST <- 
+      c2st <- list(test=binom.test(sum(diag(conf)),n=2*nsim,alternative = "greater"))
+    c2st
+  } else if (method.=="MMD") {
+    mmdsample <- rbind(fitS,dgpS)
+    distmat <- as.matrix(proxy::dist(mmdsample))
+    mat <- exp(-distmat^2)   
+    object$misc_env$MMD <- 
+      mmdtest <- ..MMDtest(mat, n1=nsim, n2=nsim, method=method, nperm=nperm)
+    mmdtest
+  } else stop("Unknown 'method'.")
+}
+
+C2ST <- function(
+    object, nsim, 
+    resimulate=FALSE,
+    Simulate=get_from(object,"Simulate"), 
+    ...) .twoSampTest(
+      object=object, nsim=nsim, resimulate=resimulate, Simulate=Simulate,
+      method.="C2ST", ...)

@@ -51,7 +51,13 @@
     }
   }
   init_from_neigh <- object$MSL$MSLE
-  profil <- function(z, init=MSLE) {
+  if ( ! length(profiledOutPars)) { # fallback for trivial case of 1-param model
+    profil <- function(z, init=MSLE) { # init is ignored but ensures that the two defs of profil() have the same args for check.
+      template[st] <- z
+      list(value=predict(object, z, which = "safe", constr_tuning = constr_tuning)[1]
+                                     ,profpt=z)
+    }
+  } else profil <- function(z, init=MSLE) {
     template[st] <- z
     ## nested defs so that objfn's template inherits from profil's template 
     

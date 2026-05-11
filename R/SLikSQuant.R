@@ -114,6 +114,17 @@ recluster <- function(object, eval_RMSEs=NULL, CIs=NULL,
          update_projectors=update_projectors)
 }
 
+get_trypoints <- function(object, nsim,..., progress=TRUE) {
+  trypoints <- NULL
+  if (progress) cat("Parameter points sampled: ")
+  while(NROW(trypoints) < nsim) {
+    trypoints <- rbind(trypoints,
+                       refine(object = object, Simulate=NULL, ntot=nsim, maxit=1L, ...) )
+    if (progress) cat(" ", NROW(trypoints))
+  }
+  trypoints[1:nsim,,drop=FALSE]
+}
+
 ## There is a documented reproject()
 # .reforest <- function(object, eval_RMSEs=NULL, CIs=NULL, ...) {
 #   refine(object = object,..., ntot=0L, maxit=1L, eval_RMSEs=FALSE, CIs=FALSE, update_projectors=TRUE)
@@ -188,10 +199,11 @@ recluster <- function(object, eval_RMSEs=NULL, CIs=NULL,
 }
 
 
-deforest_projectors <- function(object) { 
+deforest_projectors <- function(object, deep_copy=FALSE) { 
   # There is a deforest fn in ranger but it has a distinct purpose (doc) 
   # and removes many other things
   projs <- object$projectors 
+  if (deep_copy) projs <- as.list(projs, all.names=TRUE, sorted=FALSE)
   for (proj_it in names(projs)) {
     if (inherits(projs[[proj_it]],"ranger")) {
       projs[[proj_it]]$forest <- NULL
@@ -201,7 +213,10 @@ deforest_projectors <- function(object) {
       projs[[proj_it]]$projector$call <- NULL
     }
   }
-  "*Input* object has been internally modified." # 'object$projectors' environment modified
+  if (deep_copy) {
+    object$projectors <- list2env(projs, parent=emptyenv())
+    return(object)
+  } else return("*Input* object has been internally modified.") # 'object$projectors' environment modified
 }
 
 .missing_forests <- function(object) {
@@ -361,8 +376,9 @@ deforest_projectors <- function(object) {
   if (np) {
     if (.is_devel_session()) { # elaborate effort to distinguish API from non-API output
       if (verbose$most) {
-        devel_mess <- cli::col_green(paste(nrow(sub_reftable), "samples used.\n"))
-        cat("Updating projectors... ", devel_mess)
+        devel_mess <- cli::col_green(paste(nrow(sub_reftable), "samples used."))
+        cat("Updating projectors... ", devel_mess) 
+        # \n will be added before cat(paste0("Joint density modeling:...) in _this_ case (devel_session + $most)
       } else {
         devel_mess <- cli::col_green(paste("Updating projectors... ",nrow(sub_reftable), "samples used.\n"))
         cat(devel_mess)
@@ -416,12 +432,18 @@ deforest_projectors <- function(object) {
   axis(3)
 }
 
-.get_initParam <- function(object) {
-  if ( inherits(object$jointdens,"MAF")) {
+.get_initParam <- function(object, which ) {
+  if (missing(which)) {
+    if (is.null(object$completedens)) {
+      which <- "jointdens"
+    } else which <- "completedens"
+  }
+  dens <- object[[which]]
+  if ( inherits(dens,"MAF")) {
     NULL 
-  } else if (isS4(object$jointdens)) {
-    object$jointdens@parameters
-  } else object$jointdens$parameters # dMclust
+  } else if (isS4(dens)) {
+    dens@parameters
+  } else dens$parameters # dMclust
 }
   
 ## si Simulate est exterieure, il faut que l'utilisateur puisse decomposer la fn et sample_volume doit être public...
@@ -491,10 +513,14 @@ refine.default <- function(
     RMSEs <- get_from(object,"RMSEs") # LR_RMSE+ logLik() MSE ## 
     if (is.null(RMSEs)) RMSEs <- 1e10
     stat.obs <- attr(surfaceData,"stat.obs")
-    if  ( target_reached <- ( length(RMSEs) && 
-                              ( ! (anyNA_RMSE <- anyNA(RMSEs))) && # but currently (with the reftable method at least) there is no NA in the RMSE table
-                              all(RMSEs<precision))) {
-      cat("Target precision appears to be already reached in input object.\n") ## nevertheless continue for one iteration 
+    TC <- list()
+    if  ( target_reached <- ( (TC[["len"]] <- length(RMSEs)) && 
+                              ( ! (TC[["anyNA"]] <- anyNA_RMSE <- anyNA(RMSEs))) && # but currently (with the reftable method at least) there is no NA in the RMSE table
+                              (TC[["precision"]] <- if (is.numeric(precision)) {
+                                all(RMSEs<precision)
+                              } else eval(precision(RMSEs)))
+                            ) ) {
+      cat("Target precision appears to be already reached in input object.\n") ## nevertheless refine will perform at least one iteration 
     }
     previous_reftable_size <- nrow(object$logLs)
     if ( ! is.null(newsimuls)) {
@@ -535,10 +561,12 @@ refine.default <- function(
           } else ntot <- n
         }
       }
+      ntot <- as.integer(ntot) # or perhaps round(); effect is that target_nsim must never be 0<.<1
       ## Get maxit:
       if (missing(maxit) || is.null(maxit)) {
         if (previous_cumul_iter==1L) {
-          maxit <- max(1L, as.integer(log(ntot, 2)-log(.get_size_first_iter(object)/20, 2)))
+          maxit <- max(1L, as.integer(log(ntot, 2)-log(.get_size_first_iter(object)/20, 2)),
+                       na.rm=TRUE)
           if (verbose$most) message(paste0("First refine() with missing 'maxit': 'maxit' set to ",maxit,"."))
         } else {
           maxit <- ceiling(ntot*workflow_design$subblock_nbr/workflow_design$refine_blocksize)
@@ -641,7 +669,7 @@ refine.default <- function(
       logLname <- object$colTypes$logLname
       ## (1) Provide newrawstats
       if (target_nsim>0L) { 
-        ## (1.1) generate parameter points
+        ## (1.1) get parameter points
         if (inherits(object,"SLik_j")) {
           if (is.null(trypoints)) {
             rparam_blob <- rparamFn( # default is .rparam_SLik_j_in_out(), alternative is .rparam_SLik_j_B_postdens()
@@ -660,9 +688,9 @@ refine.default <- function(
               locmess <- paste0("'target_size' was ",target_nsim," but only ", NROW(trypoints)," candidate points\n",
                                 "retained after rejection step (and satisfying parameter constraints).")
             } 
-            cumn <- cumn + nrow(trypoints)
             rparam_info <- rparam_blob$rparam_info
           } else rparam_info <- object$rparam_info # keep older value
+          cumn <- cumn + nrow(trypoints)
           surfaceData <- object$logLs
         } else {
           if (is.null(trypoints)) {
@@ -987,9 +1015,13 @@ refine.default <- function(
       }
       if (inherits(object,"SLik_j")) { object$rparam_info <- rparam_info} 
       RMSEs <- get_from(object,"RMSEs") # LR_RMSE+ logLik() MSE ## 
-      target_reached <- ( length(RMSEs) && 
-                            ( ! (anyNA_RMSE <- anyNA(RMSEs))) && # but currently (with the reftable method at least) there is no NA in the RMSE table
-                            all(RMSEs<precision)) # ___F I X M E___?  better condition if not RMSE for CI bounds ?
+      TC <- list()
+      if  ( target_reached <- ( (TC[["len"]] <- length(RMSEs)) && 
+                                ( ! (TC[["anyNA"]] <- anyNA_RMSE <- anyNA(RMSEs))) && # but currently (with the reftable method at least) there is no NA in the RMSE table
+                                (TC[["precision"]] <- if (is.numeric(precision)) {
+                                  all(RMSEs<precision)
+                                } else eval(precision(RMSEs)))
+                              ) )
       if (eval_CIs_here) eval_CIs_it <- eval_CIs_it+1L
       if (eval_RMSEs_here) eval_RMSEs_it <- eval_RMSEs_it+1L
       it <- it+1L
@@ -997,7 +1029,12 @@ refine.default <- function(
       newsimuls <- NULL ## essential for the test  ! is.null(newsimuls) && maxit>1L
     } ## end while() loop
     
-    if (verbose$most && it < maxit && target_reached) cat("\nIterations terminated because all(RMSEs<precision) where precision =",precision,"\n")
+    if (verbose$most && it < maxit && target_reached) {
+      if (is.numeric(precision)) {
+        cat("\nIterations terminated because all(RMSEs<precision) where precision =",precision,".\n")
+      } else cat("\nIterations terminated because 'precision' condition is reached.\n")
+    }
+    
 
     if (( ! verbose$movie) && verbose$final) {
       if (verbose$debug) {
@@ -1018,12 +1055,19 @@ refine.default <- function(
         if (inherits(object,"SLik_j")) { object$rparam_info <- rparam_info}
       } 
     }
-    if (verbose$most) { # as meant by the doc.) 
-      if  ( any(is.na(RMSEs))) {
-        cat("Target precision could not be ascertained.\n")
-      } else if (is.null(get_from(object,"RMSEs"))) {
+    if (verbose$most) { # as meant by the doc.
+      TC <- list()
+      if ( target_reached <- ( (TC[["len"]] <- length(RMSEs)) && 
+                               ( ! (TC[["anyNA"]] <- anyNA_RMSE <- anyNA(RMSEs))) && # but currently (with the reftable method at least) there is no NA in the RMSE table
+                               (TC[["precision"]] <- if (is.numeric(precision)) {
+                                 all(RMSEs<precision)
+                               } else eval(precision(RMSEs)))
+      ) )
+      if ( ! TC[["len"]]) {
         cat("Precision has not been evaluated. Use argument 'eval_RMSEs=TRUE' to force its computation.\n")
-      } else if  ( any(RMSEs>precision) ) {
+      } else if (TC[["anyNA"]]) {
+        cat("Target precision could not be ascertained.\n")
+      } else if  ( ! TC[["precision"]]) {
         cat("\nTarget precision does not appear to be reached.\n")
       } else cat("\nTarget precision appears to be reached.\n")
     }
